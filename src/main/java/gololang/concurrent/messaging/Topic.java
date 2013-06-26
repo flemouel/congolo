@@ -25,73 +25,76 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import static java.lang.invoke.MethodHandleProxies.asInterfaceInstance;
 
 /**
- * A topic is the communication endpoint to a set of registered listener messaging functions.
- * <p>
+ * A topic is the communication endpoint to a set of registered listening messaging functions.
+ * <p/>
  * A topic is obtained from a messaging environment when spawned. It can then be used to send messages that
- * will be eventually processed by the set of target registered functions. Messages are being put in a first-in, first-out queue.
+ * will be eventually processed by the set of target registered functions. Messages are delivered using a thread
+ * poll not considering message order.
  */
 public final class Topic {
 
-  private final ExecutorService executor;
+    private final ExecutorService executor;
 
-  private final ConcurrentHashMap<MessagingFunction, MessagingFunction> functions = new ConcurrentHashMap<>();
-  private final ConcurrentLinkedQueue<Object> queue = new ConcurrentLinkedQueue<>();
+    private final ConcurrentHashMap<MessagingFunction, MessagingFunction> functions = new ConcurrentHashMap<>();
+    private final ConcurrentLinkedQueue<Object> queue = new ConcurrentLinkedQueue<>();
 
-  private final AtomicBoolean running = new AtomicBoolean(false);
-
-  /**
-   * Topic constructor.
-   *
-   * @param executor the executor to dispatch the asynchronous message handling jobs to.
-   */
-  public Topic(ExecutorService executor) {
-    this.executor = executor;
-  }
-
-  /**
-    * Registers an new listener function.
-    *
-    * @param handle the listener messaging function target.
-    */
-  public void register(MethodHandle handle) {
-    registerListener(asInterfaceInstance(MessagingFunction.class, handle));
-  }
-
-  /**
-   * Registers an new listener function.
-   *
-   * @param function the listener messaging function target.
-   */
-  public void registerListener(MessagingFunction function) {
-      functions.putIfAbsent(function, function);
-  }
+    private final AtomicBoolean running = new AtomicBoolean(false);
 
     /**
-     * Unregisters a listener function.
+     * Topic constructor.
      *
-     * @param handle the listener messaging function target.
+     * @param executor the executor to dispatch the asynchronous message handling jobs to.
+     */
+    public Topic(ExecutorService executor) {
+        this.executor = executor;
+    }
+
+    /**
+     * Registers an new listening function.
+     *
+     * @param handle the messaging function target.
+     */
+    public void register(MethodHandle handle) {
+        registerListener(asInterfaceInstance(MessagingFunction.class, handle));
+    }
+
+    /**
+     * Registers an new listening function.
+     *
+     * @param function the messaging function target.
+     */
+    public void registerListener(MessagingFunction function) {
+        functions.putIfAbsent(function, function);
+    }
+
+    /**
+     * Unregisters a listening function.
+     *
+     * @param handle the messaging function target.
      */
     public void unregister(MethodHandle handle) {
         unregisterListener(asInterfaceInstance(MessagingFunction.class, handle));
     }
 
-  /**
-    * Unregisters a listener function.
-    *
-    * @param function the listener messaging function target.
-    */
-  public void unregisterListener(MessagingFunction function) {
+    /**
+     * Unregisters a listening function.
+     *
+     * @param function the messaging function target.
+     */
+    public void unregisterListener(MessagingFunction function) {
         functions.remove(function);
-  }
-
-  private class Runner implements Runnable {
-    MessagingFunction function;
-    Object message;
-    public Runner(MessagingFunction function, Object message) {
-        this.function = function;
-        this.message = message;
     }
-    public void run() {
+
+    private class Runner implements Runnable {
+        MessagingFunction function;
+        Object message;
+
+        public Runner(MessagingFunction function, Object message) {
+            this.function = function;
+            this.message = message;
+        }
+
+        public void run() {
             try {
                 function.apply(message);
             } finally {
@@ -100,31 +103,31 @@ public final class Topic {
         }
     }
 
-  private void scheduleNext() {
-      if (!queue.isEmpty() && running.compareAndSet(false, true)) {
-      try {
-          Object message = queue.poll();
-          for (MessagingFunction function : functions.keySet()) {
-            executor.execute(new Runner(function, message));
-          }
-          running.set(false);
-      } catch (Throwable t) {
-          running.set(false);
-        throw t;
-      }
-      }
-  }
+    private void scheduleNext() {
+        if (!queue.isEmpty() && running.compareAndSet(false, true)) {
+            try {
+                Object message = queue.poll();
+                for (MessagingFunction function : functions.keySet()) {
+                    executor.execute(new Runner(function, message));
+                }
+                running.set(false);
+            } catch (Throwable t) {
+                running.set(false);
+                throw t;
+            }
+        }
+    }
 
-  /**
-   * Sends a message to the set of listener messaging functions. This method returns immediately as message processing is
-   * asynchronous.
-   *
-   * @param message the message of any type.
-   * @return the same topic object.
-   */
-  public Topic send(Object message) {
-    queue.offer(message);
-    scheduleNext();
-    return this;
-  }
+    /**
+     * Sends a message to the set of listening messaging functions. This method returns immediately as message processing is
+     * asynchronous.
+     *
+     * @param message the message of any type.
+     * @return the same topic object.
+     */
+    public Topic send(Object message) {
+        queue.offer(message);
+        scheduleNext();
+        return this;
+    }
 }

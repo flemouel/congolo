@@ -18,16 +18,16 @@ package gololang.concurrent.messaging;
 
 /**
  * A messaging function for asynchronously processing messages.
- * <p>
+ * <p/>
  * This interface is mostly used to facilitate the design of the Java API, as messaging functions are made out of
  * closures / method handles in Golo.
  */
 public interface MessagingFunction {
 
-  /**
-   * Called by a messaging executor to process a message.
-   *
-   * @param message the message to process.
-   */
-  public void apply(Object message);
+    /**
+     * Called by a messaging executor to process a message.
+     *
+     * @param message the message to process.
+     */
+    public void apply(Object message);
 }

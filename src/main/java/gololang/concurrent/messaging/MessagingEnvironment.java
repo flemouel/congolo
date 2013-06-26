@@ -24,7 +24,7 @@ import java.util.concurrent.TimeUnit;
  * A messaging environment is an abstraction over a set of spawned functions that can asynchronously process messages
  * sent through topics.
  * <p/>
- * Each topic is internally associated to a messaging function and a messages queue. The messaging environment maintains
+ * Each topic is internally associated to a set of messaging functions and a messages queue. The messaging environment maintains
  * an executor that dispatches message processing jobs over its thread pool.
  */
 public final class MessagingEnvironment {
