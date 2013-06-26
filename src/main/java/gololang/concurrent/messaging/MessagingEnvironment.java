@@ -99,7 +99,7 @@ public final class MessagingEnvironment {
      *
      * @return a topic to send messages.
      */
-    public Topic spawn() {
+    public Topic topic() {
         return new Topic(executor);
     }
 

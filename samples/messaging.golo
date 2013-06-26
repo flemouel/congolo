@@ -21,7 +21,7 @@ import gololang.concurrent.messaging.MessagingEnvironment
 function main = |args| {
 
   let env = MessagingEnvironment.builder(): withFixedThreadPool()
-  let topic = env: spawn()
+  let topic = env: topic()
 
   foreach i in range(0, 10) {
     topic: register(|message| -> println(">>> function " + i + " : " + message))

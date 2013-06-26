@@ -34,7 +34,7 @@ public class MessagingTest {
     final int MAX = 1000;
 
     MessagingEnvironment environment = MessagingEnvironment.newMessagingEnvironment();
-    Topic topic = environment.spawn();
+    Topic topic = environment.topic();
     topic.registerListener(new MessagingFunction() {
         @Override
         public void apply(Object message) {
