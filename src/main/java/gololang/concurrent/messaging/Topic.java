@@ -33,7 +33,9 @@ import static java.lang.invoke.MethodHandleProxies.asInterfaceInstance;
  */
 public final class Topic {
 
+    private final MessagingEnvironment environment;
     private final ExecutorService executor;
+    private String namespace;
 
     private final ConcurrentHashMap<MessagingFunction, MessagingFunction> functions = new ConcurrentHashMap<>();
     private final ConcurrentLinkedQueue<Object> queue = new ConcurrentLinkedQueue<>();
@@ -43,10 +45,48 @@ public final class Topic {
     /**
      * Topic constructor.
      *
+     * @param environment the messaging environment the topic is assigned to
      * @param executor the executor to dispatch the asynchronous message handling jobs to.
      */
-    public Topic(ExecutorService executor) {
+    public Topic(MessagingEnvironment environment, ExecutorService executor) {
+        this.environment = environment;
         this.executor = executor;
+        this.namespace = Integer.toString(hashCode());
+    }
+
+    /**
+     * Topic constructor.
+     *
+     * @param environment the messaging environment the topic is assigned to
+     * @param executor the executor to dispatch the asynchronous message handling jobs to.
+     * @param namespace the name space of the topic
+     */
+    public Topic(MessagingEnvironment environment, ExecutorService executor, String namespace) {
+        this.environment = environment;
+        this.executor = executor;
+        this.namespace = namespace;
+    }
+
+    /**
+     * Returns the topic namespace
+     *
+     * @return the topic namespace
+     */
+    public String getNamespace() {
+        return namespace;
+    }
+
+    /**
+     * Reinitialize the topic namespace
+     *
+     * @param the new topic namespace
+     */
+    public void setNamespace(String namespace) {
+        if (!this.namespace.equals(namespace)) {
+            environment.bury(this);
+            this.namespace = namespace;
+            environment.topic(this);
+        }
     }
 
     /**

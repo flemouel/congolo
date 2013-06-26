@@ -30,6 +30,7 @@ import java.util.concurrent.TimeUnit;
 public final class MessagingEnvironment {
 
     private final ExecutorService executor;
+    private final TopicRegistry registry;
 
     /**
      * Creates a new messaging environment using an executor.
@@ -38,6 +39,7 @@ public final class MessagingEnvironment {
      */
     public MessagingEnvironment(ExecutorService executor) {
         this.executor = executor;
+        this.registry = new TopicRegistry();
     }
 
     /**
@@ -100,7 +102,55 @@ public final class MessagingEnvironment {
      * @return a topic to send messages.
      */
     public Topic topic() {
-        return new Topic(executor);
+        Topic topic = new Topic(this, executor);
+        registry.put(Integer.toString(topic.hashCode()), topic);
+        return topic;
+    }
+
+    /**
+     * Spawns a messaging topic.
+     *
+     * @param namespace the topic name space
+     * @return a topic to send messages.
+     */
+    public Topic topic(String namespace) {
+        if (registry.contains(namespace)) {
+            return registry.get(namespace);
+        } else {
+            Topic topic = new Topic(this, executor, namespace);
+            registry.put(namespace, topic);
+            return topic;
+        }
+    }
+
+    /**
+     * Spawns a messaging topic.
+     *
+     * @param topic the topic
+     * @return a topic to send messages.
+     */
+    public Topic topic(Topic topic) {
+        return topic(topic.getNamespace());
+    }
+
+    /**
+     * Buries a messaging topic
+     *
+     * @param topic the topic
+     * @return the topic
+     */
+    public Topic bury(Topic topic) {
+        return bury(topic.getNamespace());
+    }
+
+    /**
+     * Buries a messaging topic
+     *
+     * @param namespace the topic namespace
+     * @return the topic
+     */
+    public Topic bury(String namespace) {
+        return registry.remove(namespace);
     }
 
     /**

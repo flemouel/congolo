@@ -23,6 +23,10 @@ function main = |args| {
   let env = MessagingEnvironment.builder(): withFixedThreadPool()
   let topic = env: topic()
 
+  println(topic: getNamespace())
+  topic: setNamespace("golo.messaging")
+  println(topic: getNamespace())
+
   foreach i in range(0, 10) {
     topic: register(|message| -> println(">>> function " + i + " : " + message))
   }
