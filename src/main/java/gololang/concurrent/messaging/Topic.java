@@ -27,9 +27,9 @@ import static java.lang.invoke.MethodHandleProxies.asInterfaceInstance;
 /**
  * A topic is the communication endpoint to a set of registered listening messaging functions.
  * <p/>
- * A topic is obtained from a messaging environment when spawned. It can then be used to send messages that
- * will be eventually processed by the set of target registered functions. Messages are delivered using a thread
- * poll not considering message order.
+ * A topic is obtained from a messaging environment when spawned. It can then be used to send
+ * messages that will be eventually processed by the set of target registered functions. Messages
+ * are delivered using a thread poll not considering message order.
  */
 public final class Topic {
 
@@ -159,8 +159,8 @@ public final class Topic {
     }
 
     /**
-     * Sends a message to the set of listening messaging functions. This method returns immediately as message processing is
-     * asynchronous.
+     * Sends a message to the set of listening messaging functions of the current local topic.
+     * This method returns immediately as message processing is asynchronous.
      *
      * @param message the message of any type.
      * @return the same topic object.
@@ -168,6 +168,19 @@ public final class Topic {
     public Topic send(Object message) {
         queue.offer(message);
         scheduleNext();
+        return this;
+    }
+
+    /**
+     * Spreads a message to the set of listening messaging functions of the current local topic
+     * and all its subtopics (identified by a subspacename). This method returns immediately as
+     * message processing is asynchronous.
+     *
+     * @param message the message of any type.
+     * @return the same topic object.
+     */
+    public Topic spread(Object message) {
+        environment.spread(getNamespace(), message);
         return this;
     }
 }

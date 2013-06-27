@@ -16,6 +16,7 @@
 
 package gololang.concurrent.messaging;
 
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class TopicRegistry {
@@ -40,5 +41,9 @@ public class TopicRegistry {
 
     public boolean contains(String namespace) {
         return registry.containsKey(namespace);
+    }
+
+    public Set<String> namespaces() {
+        return registry.keySet();
     }
 }

@@ -110,7 +110,7 @@ public final class MessagingEnvironment {
     /**
      * Spawns a messaging topic.
      *
-     * @param namespace the topic name space
+     * @param namespace the topic name space.
      * @return a topic to send messages.
      */
     public Topic topic(String namespace) {
@@ -126,7 +126,7 @@ public final class MessagingEnvironment {
     /**
      * Spawns a messaging topic.
      *
-     * @param topic the topic
+     * @param topic the topic.
      * @return a topic to send messages.
      */
     public Topic topic(Topic topic) {
@@ -136,8 +136,8 @@ public final class MessagingEnvironment {
     /**
      * Buries a messaging topic
      *
-     * @param topic the topic
-     * @return the topic
+     * @param topic the topic.
+     * @return the topic.
      */
     public Topic bury(Topic topic) {
         return bury(topic.getNamespace());
@@ -146,11 +146,42 @@ public final class MessagingEnvironment {
     /**
      * Buries a messaging topic
      *
-     * @param namespace the topic namespace
-     * @return the topic
+     * @param namespace the topic namespace.
+     * @return the topic.
      */
     public Topic bury(String namespace) {
         return registry.remove(namespace);
+    }
+
+    /**
+     * Spreads a message to the set of listening messaging functions of all topics.
+     * This method returns immediately as message processing is asynchronous.
+     *
+     * @param message the message of any type.
+     * @return the first topic of the environment.
+     */
+    public Topic spread(Object message) {
+        return spread("", message);
+    }
+
+    /**
+     * Spreads a message to the set of listening messaging functions of a topic and all subtopics
+     * identified by a spacename prefix. This method returns immediately as message processing is asynchronous.
+     *
+     * @param prefix  the spacename prefix.
+     * @param message the message of any type.
+     * @return the first topic matching the prefix.
+     */
+    public Topic spread(String prefix, Object message) {
+        Topic first = null;
+        for (String namespace : registry.namespaces()) {
+            if (namespace.startsWith(prefix)) {
+                Topic topic = registry.get(namespace);
+                if (first == null) first = topic;
+                topic.send(message);
+            }
+        }
+        return first;
     }
 
     /**

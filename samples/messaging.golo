@@ -18,25 +18,97 @@ import java.lang.Thread
 import java.util.concurrent
 import gololang.concurrent.messaging.MessagingEnvironment
 
+local function receiver = |namespace, i, message| ->
+  println(">>> (namespace: " + namespace + ") >>> receiver " + i + " : " + message)
+
 function main = |args| {
 
   let env = MessagingEnvironment.builder(): withFixedThreadPool()
-  let topic = env: topic()
+  let topic = env: topic("golo")
 
-  println(topic: getNamespace())
-  topic: setNamespace("golo.messaging")
-  println(topic: getNamespace())
+  println("namespace: " + topic: getNamespace())
 
   foreach i in range(0, 10) {
-    topic: register(|message| -> println(">>> function " + i + " : " + message))
+    println("registering: receiver " + i)
+    let receiver_i = ^receiver: bindTo(topic: getNamespace()): bindTo(i)
+    topic: register(receiver_i)
   }
 
-  foreach i in range(0, 100) {
+  println("sending")
+
+  foreach i in range(0, 10) {
     topic: send("[" + i + "]")
   }
 
   Thread.sleep(1000_L)
-  topic: send("Die !")
+
+  let subtopic = env: topic("golo>messaging")
+
+  println("namespace: " + subtopic: getNamespace())
+
+  foreach i in range(0, 5) {
+    println("registering: receiver " + i)
+    let receiver_i = ^receiver: bindTo(subtopic: getNamespace()): bindTo(i)
+    subtopic: register(receiver_i)
+  }
+
+  println("sending")
+
+  foreach i in range(0, 10) {
+    subtopic: send("[" + i + "]")
+  }
+
+  Thread.sleep(1000_L)
+
+  println("spreading")
+
+  foreach i in range(0, 10) {
+    topic: spread("[" + i + "]")
+  }
+
+  Thread.sleep(1000_L)
+
+  env: bury(subtopic)
+
+  println("spreading")
+
+  foreach i in range(0, 10) {
+    topic: spread("[" + i + "]")
+  }
+
+  Thread.sleep(1000_L)
+
+  println("spreading")
+
+  foreach i in range(0, 10) {
+    env: spread("golo", "[" + i + "]")
+  }
+
+  Thread.sleep(1000_L)
+
+  println("spreading")
+
+  foreach i in range(0, 10) {
+    env: spread("[" + i + "]")
+  }
+
+  Thread.sleep(1000_L)
+
+  let newtopic = env: topic()
+
+  println("namespace: " + newtopic: getNamespace())
+
+  foreach i in range(0, 5) {
+    println("registering: receiver " + i)
+    let receiver_i = ^receiver: bindTo(newtopic: getNamespace()): bindTo(i)
+    newtopic: register(receiver_i)
+  }
+
+  println("spreading")
+
+  foreach i in range(0, 10) {
+    env: spread("[" + i + "]")
+  }
 
   env: shutdown()
 }
