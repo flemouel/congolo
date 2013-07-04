@@ -19,30 +19,66 @@ package gololang.concurrent.messaging;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * TopicRegistry is a abstraction to store the topics in a thread-safe way
+ * using a ConcurrentHaspMap.
+ */
 public class TopicRegistry {
 
     private ConcurrentHashMap<String, Topic> registry = new ConcurrentHashMap();
 
+    /**
+     * TopicRegistry constructor
+     */
     public TopicRegistry() {
         super();
     }
 
+    /**
+     * Puts a topic - identified by its namespace - to the registry
+     *
+     * @param namespace the topic namespace.
+     * @param topic the topic object.
+     */
     public void put(String namespace, Topic topic) {
         registry.putIfAbsent(namespace, topic);
     }
 
+    /**
+     * Gets a topic - identified by its namespace
+     *
+     * @param namespace the topic namespace.
+     * @return the concerned topic or null if not included in the registry.
+     */
     public Topic get(String namespace) {
         return registry.get(namespace);
     }
 
+    /**
+     * Removes a topic - identified by its namespace - from the registry
+     *
+     * @param namespace the topic namespace.
+     * @return the topic removed or null if not included in the registry.
+     */
     public Topic remove(String namespace) {
         return registry.remove(namespace);
     }
 
+    /**
+     * Returns true if the registry contains the topic
+     *
+     * @param namespace the topic namespace to check.
+     * @return true if the registry contains the topic.
+     */
     public boolean contains(String namespace) {
         return registry.containsKey(namespace);
     }
 
+    /**
+     * Returns a set of topic namespaces
+     *
+     * @return a set of topic namespaces.
+     */
     public Set<String> namespaces() {
         return registry.keySet();
     }

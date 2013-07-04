@@ -45,7 +45,7 @@ public final class Topic {
     /**
      * Topic constructor.
      *
-     * @param environment the messaging environment the topic is assigned to
+     * @param environment the messaging environment the topic is assigned to.
      * @param executor the executor to dispatch the asynchronous message handling jobs to.
      */
     public Topic(MessagingEnvironment environment, ExecutorService executor) {
@@ -57,7 +57,7 @@ public final class Topic {
     /**
      * Topic constructor.
      *
-     * @param environment the messaging environment the topic is assigned to
+     * @param environment the messaging environment the topic is assigned to.
      * @param executor the executor to dispatch the asynchronous message handling jobs to.
      * @param namespace the name space of the topic
      */
@@ -70,7 +70,7 @@ public final class Topic {
     /**
      * Returns the topic namespace
      *
-     * @return the topic namespace
+     * @return the topic namespace.
      */
     public String getNamespace() {
         return namespace;
@@ -79,7 +79,7 @@ public final class Topic {
     /**
      * Reinitialize the topic namespace
      *
-     * @param the new topic namespace
+     * @param the new topic namespace.
      */
     public void setNamespace(String namespace) {
         if (!this.namespace.equals(namespace)) {
