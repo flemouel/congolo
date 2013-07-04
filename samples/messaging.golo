@@ -42,7 +42,7 @@ function main = |args| {
 
   Thread.sleep(1000_L)
 
-  let subtopic = env: topic("golo>messaging")
+  let subtopic = env: topic("golo:messaging")
 
   println("namespace: " + subtopic: getNamespace())
 

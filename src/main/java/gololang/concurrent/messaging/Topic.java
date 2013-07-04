@@ -21,6 +21,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static java.lang.invoke.MethodHandleProxies.asInterfaceInstance;
 
@@ -43,10 +45,28 @@ public final class Topic {
     private final AtomicBoolean running = new AtomicBoolean(false);
 
     /**
+     * Checks if the namespace is correct. Throws an IllegalArgumentException if not.
+     *
+     * The namespace has to obey to the following grammar: [a-zA-Z0-9]+[:a-zA-Z0-9]*
+     * Examples:
+     * golo:messaging1:topic2subtopic3 -> correct
+     * golo>test!:notgood -> uncorrect
+     *
+     * @param namespace the namespace to check.
+     * @return the namespace.
+     */
+    public static String checkNamespace(String namespace) {
+        Pattern pattern = Pattern.compile("[a-zA-Z0-9]+[:a-zA-Z0-9]*");
+        Matcher matcher = pattern.matcher(namespace);
+        if (!matcher.matches()) throw new IllegalArgumentException("namespace not correct");
+        return namespace;
+    }
+
+    /**
      * Topic constructor.
      *
      * @param environment the messaging environment the topic is assigned to.
-     * @param executor the executor to dispatch the asynchronous message handling jobs to.
+     * @param executor    the executor to dispatch the asynchronous message handling jobs to.
      */
     public Topic(MessagingEnvironment environment, ExecutorService executor) {
         this.environment = environment;
@@ -58,13 +78,13 @@ public final class Topic {
      * Topic constructor.
      *
      * @param environment the messaging environment the topic is assigned to.
-     * @param executor the executor to dispatch the asynchronous message handling jobs to.
-     * @param namespace the name space of the topic
+     * @param executor    the executor to dispatch the asynchronous message handling jobs to.
+     * @param namespace   the name space of the topic
      */
     public Topic(MessagingEnvironment environment, ExecutorService executor, String namespace) {
         this.environment = environment;
         this.executor = executor;
-        this.namespace = namespace;
+        this.namespace = checkNamespace(namespace);
     }
 
     /**
@@ -82,6 +102,7 @@ public final class Topic {
      * @param the new topic namespace.
      */
     public void setNamespace(String namespace) {
+        checkNamespace(namespace);
         if (!this.namespace.equals(namespace)) {
             environment.bury(this);
             this.namespace = namespace;
