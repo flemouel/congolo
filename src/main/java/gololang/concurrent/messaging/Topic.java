@@ -47,7 +47,11 @@ public final class Topic {
     /**
      * Checks if the namespace is correct. Throws an IllegalArgumentException if not.
      *
-     * The namespace has to obey to the following grammar: [a-zA-Z0-9]+[:a-zA-Z0-9]*
+     * The namespace has to obey to the following grammar:
+     * <pre>
+     * {@code [a-zA-Z0-9]+[:a-zA-Z0-9]*}
+     * </pre>
+     *
      * Examples:
      * golo:messaging1:topic2subtopic3 -> correct
      * golo>test!:notgood -> uncorrect
