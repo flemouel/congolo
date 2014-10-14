@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2013 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
+ * Copyright 2012-2014 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,8 +18,6 @@ package fr.insalyon.citi.golo.compiler;
 
 import fr.insalyon.citi.golo.compiler.parser.ParseException;
 import fr.insalyon.citi.golo.internal.testing.TestUtils;
-import org.objectweb.asm.ClassReader;
-import org.objectweb.asm.util.TraceClassVisitor;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -27,27 +25,20 @@ import org.testng.annotations.Test;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.util.Iterator;
 import java.util.List;
 
 import static fr.insalyon.citi.golo.internal.testing.TestUtils.compileAndLoadGoloModule;
-import static fr.insalyon.citi.golo.internal.testing.Tracing.println;
-import static fr.insalyon.citi.golo.internal.testing.Tracing.shouldTrace;
-import static org.hamcrest.CoreMatchers.*;
+import static fr.insalyon.citi.golo.internal.testing.Tracing.*;
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.startsWith;
 
 public class CompilationTest {
 
   public static final String SRC = "src/test/resources/for-parsing-and-compilation/";
-
-  private File temporaryFolder;
-
-  @BeforeTest
-  public void setup() throws IOException {
-    temporaryFolder = Files.createTempDirectory("golocomp").toFile();
-  }
 
   @DataProvider(name = "golo-files")
   public static Iterator<Object[]> data() {
@@ -70,7 +61,7 @@ public class CompilationTest {
       assertThat(result.getPackageAndClass(), notNullValue());
 
       if (shouldTrace) {
-        visit(result.getBytecode());
+        traceBytecode(result.getBytecode());
       }
 
     /*
@@ -88,9 +79,4 @@ public class CompilationTest {
     }
   }
 
-  private void visit(byte[] bytecode) {
-    ClassReader reader = new ClassReader(bytecode);
-    TraceClassVisitor tracer = new TraceClassVisitor(new PrintWriter(System.out));
-    reader.accept(tracer, 0);
-  }
 }

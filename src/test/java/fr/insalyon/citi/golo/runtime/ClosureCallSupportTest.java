@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2013 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
+ * Copyright 2012-2014 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -75,5 +75,10 @@ public class ClosureCallSupportTest {
     callSite = ClosureCallSupport.bootstrap(lookup(), "closure", methodType(Object.class, MethodHandle.class));
     invoker = callSite.dynamicInvoker();
     assertThat((String) invoker.invokeWithArguments(handle), is(""));
+
+    handle = lookup().findStatic(ClosureCallSupportTest.class, "concat", genericMethodType(0, true));
+    callSite = ClosureCallSupport.bootstrap(lookup(), "closure", methodType(Object.class, MethodHandle.class, Object.class));
+    invoker = callSite.dynamicInvoker();
+    assertThat((String) invoker.invokeWithArguments(handle, new Object[]{1,2}), is("12"));
   }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2013 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
+ * Copyright 2012-2014 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 package fr.insalyon.citi.golo.compiler.parser;
 
 public class GoloTokenBase {
-  public int startOffset;
-  public int endOffset;
+  public int startOffset = -1;
+  public int endOffset = -1;
   public Token previousToken;
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2013 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
+ * Copyright 2012-2014 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package fr.insalyon.citi.golo.runtime;
 
+import gololang.DynamicObject;
 import org.testng.annotations.Test;
 
 import java.lang.invoke.CallSite;
@@ -94,6 +95,13 @@ public class MethodInvocationSupportTest {
 
   public static class FieldAccessors {
     public Object property;
+  }
+
+  public static class Ploper {
+
+    public String plop(Object obj) {
+      return obj.toString();
+    }
   }
 
   public Person julien() {
@@ -212,6 +220,12 @@ public class MethodInvocationSupportTest {
     assertThat(result, notNullValue());
     assertThat(result, instanceOf(String.class));
     assertThat((String) result, is("a-b-c"));
+
+    concat = MethodInvocationSupport.bootstrap(lookup(), "concat", methodType(Object.class, Object.class, Object.class, Object.class), 0);
+    result = concat.dynamicInvoker().invokeWithArguments(receiver, "-", new String[]{"a", "b", "c"});
+    assertThat(result, notNullValue());
+    assertThat(result, instanceOf(String.class));
+    assertThat((String) result, is("a-b-c"));
   }
 
   @Test
@@ -220,6 +234,12 @@ public class MethodInvocationSupportTest {
     VarargsChecking receiver = varargsChecking();
 
     Object result = concat.dynamicInvoker().invokeWithArguments(receiver, "a", "b", "c");
+    assertThat(result, notNullValue());
+    assertThat(result, instanceOf(String.class));
+    assertThat((String) result, is("a-b-c"));
+
+    concat = MethodInvocationSupport.bootstrap(lookup(), "defaultConcat", methodType(Object.class, Object.class, Object.class), 0);
+    result = concat.dynamicInvoker().invokeWithArguments(receiver, new String[]{"a", "b", "c"});
     assertThat(result, notNullValue());
     assertThat(result, instanceOf(String.class));
     assertThat((String) result, is("a-b-c"));
@@ -286,5 +306,30 @@ public class MethodInvocationSupportTest {
     assertThat((String) invoker.invoke(Arrays.asList()), is("[]"));
     assertThat((String) invoker.invoke(new Object()), startsWith("java.lang.Object"));
     assertThat(invoker.invoke(null), nullValue());
+  }
+
+  @Test
+  public void dynamic_object_smoke_tests() throws Throwable {
+    DynamicObject a = new DynamicObject();
+    DynamicObject b = new DynamicObject();
+    CallSite plopper = MethodInvocationSupport.bootstrap(lookup(), "plop", methodType(Object.class, Object.class, Object.class), 1);
+    MethodHandle invoker = plopper.dynamicInvoker();
+
+    invoker.invoke(a, 1);
+    assertThat(a.get("plop"), is((Object) 1));
+
+    invoker.invoke(b, 1);
+    assertThat(b.get("plop"), is((Object) 1));
+
+    invoker.invoke(a, 10);
+    assertThat(a.get("plop"), is((Object) 10));
+    assertThat(b.get("plop"), is((Object) 1));
+
+    assertThat(invoker.invoke(new Ploper(), 666), is((Object) "666"));
+
+    b.undefine("plop");
+    Object result = invoker.invoke(b, 1);
+    assertThat(result, is((Object) b));
+    assertThat(b.get("plop"), is((Object) 1));
   }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2013 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
+ * Copyright 2012-2014 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -114,7 +114,7 @@ public class Predefined {
    *
    * @return a String.
    */
-  public static String readpwd() throws IOException {
+  public static String readPassword() throws IOException {
     return String.valueOf(System.console().readPassword());
   }
 
@@ -124,10 +124,31 @@ public class Predefined {
    * @param message displays a prompt message.
    * @return a String.
    */
-  public static String readpwd(String message) throws IOException {
+  public static String readPassword(String message) throws IOException {
     System.out.print(message);
-    return readpwd();
+    return readPassword();
   }
+
+  /**
+   * Reads a password from the console with echoing disabled, returning an {@code char[]} array.
+   *
+   * @return a character array.
+   */
+  public static char[] secureReadPassword() throws IOException {
+    return System.console().readPassword();
+  }
+
+  /**
+   * Reads a password from the console with echoing disabled, returning an {@code char[]} array.
+   *
+   * @param message displays a prompt message.
+   * @return a character array.
+   */
+  public static char[] secureReadPassword(String message) throws IOException {
+    System.out.print(message);
+    return secureReadPassword();
+  }
+
 
   // ...................................................................................................................
 
@@ -294,7 +315,7 @@ public class Predefined {
    *
    * @param object the object.
    * @return <code>true</code> if <code>object</code> is an instance of <code>java.lang.invoke.MethodHandle</code>,
-   *         <code>false</code> otherwise.
+   * <code>false</code> otherwise.
    */
   public static Object isClosure(Object object) {
     return object instanceof MethodHandle;
@@ -393,7 +414,232 @@ public class Predefined {
     require(text instanceof String, "text must be a string");
     String str = (String) text;
     Path path = pathFrom(file);
-    Files.write(path, str.getBytes(), StandardOpenOption.WRITE, StandardOpenOption.CREATE);
+    if (path.toString().equals("-")) {
+      System.out.write(str.getBytes());
+    } else {
+      Files.write(path, str.getBytes(), StandardOpenOption.WRITE, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+    }
+  }
+
+  /**
+   * Check if a file exists.
+   *
+   * @param file the file to read from as an instance of either {@link String}, {@link File} or {@link Path}.
+   * @return true if the file exists, false if it doesn't
+   */
+  public static boolean fileExists(Object file) {
+    return Files.exists(pathFrom(file));
+  }
+
+  /**
+   * Return current path of execution.
+   *
+   * @return current path of execution
+   */
+  public static String currentDir() throws Throwable {
+    return new File(".").getCanonicalPath();
+  }
+
+  // ...................................................................................................................
+
+  /**
+   * Checks if an object is a (JVM) array or not.
+   *
+   * @param object the object to check.
+   * @return {@code true} if {@code object} is an array, {@code false} otherwise or if {@code null}.
+   */
+  public static boolean isArray(Object object) {
+    return (object != null) && object.getClass().isArray();
+  }
+
+  /**
+   * Function to obtain the {@code Object[].class} reference.
+   *
+   * @return {@code Object[].class}
+   */
+  public static Class<?> objectArrayType() {
+    return Object[].class;
+  }
+
+  /**
+   * Returns an array class given a type class.
+   *
+   * @param klass the array type.
+   * @return the class of the array of type {@code klass}, i.e., {@code klass[]}.
+   * @throws ClassNotFoundException if the type could not be found.
+   */
+  public static Class<?> arrayTypeOf(Object klass) throws ClassNotFoundException {
+    require(klass instanceof Class<?>, "klass must be a class");
+    Class<?> type = (Class<?>) klass;
+    return Class.forName("[L" + type.getName() + ";", true, type.getClassLoader());
+  }
+
+  // ...................................................................................................................
+  // These are generated methods, see src/main/ruby/generate_type_conversions.rb
+
+  /**
+   * Gives the Character value of some number or String object.
+   *
+   * @param obj a boxed number or String value.
+   * @return the Character value.
+   * @throws IllegalArgumentException if {@code obj} is not a number or a String.
+   */
+  public static Object charValue(Object obj) throws IllegalArgumentException {
+    if (obj instanceof Character) {
+      return obj;
+    }
+    if (obj instanceof Integer) {
+      int value = (Integer) obj;
+      return (char) value;
+    }
+    if (obj instanceof Long) {
+      long value = (Long) obj;
+      return (char) value;
+    }
+    if (obj instanceof Double) {
+      double value = (Double) obj;
+      return (char) value;
+    }
+    if (obj instanceof Float) {
+      float value = (Float) obj;
+      return (char) value;
+    }
+    if (obj instanceof String) {
+      return ((String) obj).charAt(0);
+    }
+    throw new IllegalArgumentException("Expected a number or a string, but got: " + obj);
+  }
+
+  /**
+   * Gives the Integer value of some number or String object.
+   *
+   * @param obj a boxed number or String value.
+   * @return the Integer value.
+   * @throws IllegalArgumentException if {@code obj} is not a number or a String.
+   */
+  public static Object intValue(Object obj) throws IllegalArgumentException {
+    if (obj instanceof Integer) {
+      return obj;
+    }
+    if (obj instanceof Character) {
+      char value = (Character) obj;
+      return (int) value;
+    }
+    if (obj instanceof Long) {
+      long value = (Long) obj;
+      return (int) value;
+    }
+    if (obj instanceof Double) {
+      double value = (Double) obj;
+      return (int) value;
+    }
+    if (obj instanceof Float) {
+      float value = (Float) obj;
+      return (int) value;
+    }
+    if (obj instanceof String) {
+      return Integer.valueOf((String) obj);
+    }
+    throw new IllegalArgumentException("Expected a number or a string, but got: " + obj);
+  }
+
+  /**
+   * Gives the Long value of some number or String object.
+   *
+   * @param obj a boxed number or String value.
+   * @return the Long value.
+   * @throws IllegalArgumentException if {@code obj} is not a number or a String.
+   */
+  public static Object longValue(Object obj) throws IllegalArgumentException {
+    if (obj instanceof Long) {
+      return obj;
+    }
+    if (obj instanceof Character) {
+      char value = (Character) obj;
+      return (long) value;
+    }
+    if (obj instanceof Integer) {
+      int value = (Integer) obj;
+      return (long) value;
+    }
+    if (obj instanceof Double) {
+      double value = (Double) obj;
+      return (long) value;
+    }
+    if (obj instanceof Float) {
+      float value = (Float) obj;
+      return (long) value;
+    }
+    if (obj instanceof String) {
+      return Long.valueOf((String) obj);
+    }
+    throw new IllegalArgumentException("Expected a number or a string, but got: " + obj);
+  }
+
+  /**
+   * Gives the Double value of some number or String object.
+   *
+   * @param obj a boxed number or String value.
+   * @return the Double value.
+   * @throws IllegalArgumentException if {@code obj} is not a number or a String.
+   */
+  public static Object doubleValue(Object obj) throws IllegalArgumentException {
+    if (obj instanceof Double) {
+      return obj;
+    }
+    if (obj instanceof Character) {
+      char value = (Character) obj;
+      return (double) value;
+    }
+    if (obj instanceof Integer) {
+      int value = (Integer) obj;
+      return (double) value;
+    }
+    if (obj instanceof Long) {
+      long value = (Long) obj;
+      return (double) value;
+    }
+    if (obj instanceof Float) {
+      float value = (Float) obj;
+      return (double) value;
+    }
+    if (obj instanceof String) {
+      return Double.valueOf((String) obj);
+    }
+    throw new IllegalArgumentException("Expected a number or a string, but got: " + obj);
+  }
+
+  /**
+   * Gives the Float value of some number or String object.
+   *
+   * @param obj a boxed number or String value.
+   * @return the Float value.
+   * @throws IllegalArgumentException if {@code obj} is not a number or a String.
+   */
+  public static Object floatValue(Object obj) throws IllegalArgumentException {
+    if (obj instanceof Float) {
+      return obj;
+    }
+    if (obj instanceof Character) {
+      char value = (Character) obj;
+      return (float) value;
+    }
+    if (obj instanceof Integer) {
+      int value = (Integer) obj;
+      return (float) value;
+    }
+    if (obj instanceof Long) {
+      long value = (Long) obj;
+      return (float) value;
+    }
+    if (obj instanceof Double) {
+      double value = (Double) obj;
+      return (float) value;
+    }
+    if (obj instanceof String) {
+      return Float.valueOf((String) obj);
+    }
+    throw new IllegalArgumentException("Expected a number or a string, but got: " + obj);
   }
 
   // ...................................................................................................................

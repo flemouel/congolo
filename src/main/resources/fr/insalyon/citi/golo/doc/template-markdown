@@ -1,0 +1,32 @@
+<%@params doc %>
+# Documentation for `<%= doc: moduleName() %>`
+
+<%= doc: moduleDocumentation() %>
+
+<% if not doc: structs(): isEmpty() { %>
+## Structs
+<% foreach structName in doc: structs(): keySet() { %>
+### `<%= structName %>`
+<%= doc: structs(): get(structName) %>
+<% } %>
+<% } %>
+
+<% if not doc: augmentations(): isEmpty() { %>
+## Augmentations
+<% foreach augmentation in doc: augmentations(): keySet() { %>
+### `<%= augmentation %>`
+<%= doc: augmentations(): get(augmentation) %>
+<% foreach funcDoc in doc: augmentationFunctions(): get(augmentation) { %>
+#### `<%= funcDoc: name() %>(<%= funcDoc: arguments(): join(", ") %>)`
+<%= funcDoc: documentation() %>
+<% } %>
+<% } %>
+<% } %>
+
+<% if not doc: functions(): isEmpty() { %>
+## Functions
+<% foreach funcDoc in doc: functions() { %>
+### `<%= funcDoc: name() %>(<%= funcDoc: arguments(): join(", ") %>)`
+<%= funcDoc: documentation() %>
+<% } %>
+<% } %>

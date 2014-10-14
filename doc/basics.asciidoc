@@ -7,8 +7,9 @@ Let us start with the Golo basics.
 Editor and IDE support for Golo is available for:
 
 - https://github.com/jponge/vim-golo[Vim]
-- https://github.com/k33g/sublime-golo[Sublime Text 2]
+- https://github.com/k33g/sublime-golo[Sublime Text 2 & 3]
 - https://github.com/k33g/golo-storm[IntelliJ IDEA (syntax highthing)]
+- https://github.com/golo-lang/gldt[Eclipse] (contributed by Jeff Maury)
 - https://github.com/golo-lang/golo-netbeans[Netbeans] (contributed by http://www.serli.com/[Serli])
 
 === Hello world ===
@@ -16,7 +17,7 @@ Editor and IDE support for Golo is available for:
 Golo source code need to be placed in _modules_. Module names are
 separated with dots, as in:
 
-[source,text]
+[source,golo]
 ----
 Foo
 foo.Bar
@@ -31,7 +32,7 @@ letter.
 A Golo module can be executable if it has a _function_ named `main` and
 that takes an argument for the JVM program arguments:
 
-[source,text]
+[source,golo]
 ----
 module hello.World
 
@@ -53,12 +54,20 @@ Of course, we need to run this incredibly complex application.
 Golo comes with a `golo` script found in the distribution `bin/` folder. It provides several
 commands, notably:
 
-- `version` to query the Golo version,
-- `compile` to compile some Golo code to JVM classes,
+- `version` to query the Golo version, and
+- `compile` to compile some Golo code to JVM classes, and
 - `run` to execute some already compiled Golo code, and
-- `golo` to directly execute Golo code from source files.
+- `golo` to directly execute Golo code from source files, and
+- `diagnose` to print compiler internal diagnosis information, and
+- `doc` to generate module(s) documentation, and
+- `new` to generate new project(s).
 
 The complete commands usage instructions can be listed by running `golo --help`.
+A command usage instructions can be listed by running `golo --usage ${command}`.
+
+IMPORTANT: The `golo` script comes with JVM tuning settings that may not be appropriate to your
+environment. We also provide a `vanilla-golo` script with no tuning. You may use the `$JAVA_OPTS`
+environment variable to provide custom JVM tuning to `vanilla-golo`.
 
 Provided that `golo` is available from your current `$PATH`, you may run the program above as
 follows:
@@ -67,18 +76,21 @@ follows:
 ----
 $ golo golo --files samples/helloworld.golo
 Hello world!
+$ golo golo --files samples/ --module hello.World
+Hello world!
 $
 ----
 
-`golo golo` takes several Golo source files as input. It expects the last
-one to have a `main` function to call. The Golo code is compiled on the
-fly and executed straight into a JVM.
+`golo golo` takes several Golo source files (*.golo and directories) as input.
+It expects the last one to have a `main` function to call (or use
+`--module` to define the golo module with the `main` function).
+The Golo code is compiled on the fly and executed straight into a JVM.
 
 You may also pass arguments to the `main` function by appending `--args`
 on the command line invocation. Suppose that we have a module `EchoArgs`
 as follows:
 
-[source,text]
+[source,golo]
 ----
 module EchoArgs
 
@@ -101,6 +113,9 @@ $
 ----
 
 Note that `args` is expected to be an array.
+
+Finally, the `--classpath` flag allows to specify a list of classpath elements, which can be either
+directories or `.jar` files. See the `golo help` command for details on the various Golo commands.
 
 === Compiling Golo source code ===
 
@@ -147,7 +162,7 @@ Simple, isn't it?
 === Passing JVM-specific flags ===
 
 Both `golo` and `run` commands can be given JVM-specific flags using the `JAVA_OPTS` environment
-variable. 
+variable.
 
 As an example, the following runs `fibonacci.golo` and prints JIT compilation along the way:
 
@@ -161,11 +176,21 @@ $ golo golo --files samples/fibonacci.golo
 $ JAVA_OPTS=-XX:+PrintCompilation golo golo --files samples/fibonacci.golo
 ----
 
+=== Bash autocompletion ===
+
+A bash script can be found in `share/shell-completion/` called `golo-bash-completion` that will provide autocomplete support for the `golo` and `vanilla-golo` CLI scripts. You may either `source` the script, or drop the script into your `bash_completion.d/` folder and restart your terminal.
+
+TIP: Not sure where your `bash_completion.d/` folder is? Try `/etc/bash_completion.d/` on Linux or `/usr/local/etc/bash_completion.d/` for Mac Homebrew users.
+
+=== Zsh autocompletion ===
+
+A zsh script can be found in `share/shell-completion/` called `golo-zsh-completion` that works using the `golo-bash-completion` to provide autocomplete support using the bash autocomplete support provided by zsh. Place both files into the same directory and `source golo-zsh-completion` from your terminal or `.zshrc` to give it a try!
+
 === Comments ===
 
 Golo comments start with a `#`, just like in Bash, Python or Ruby:
 
-[source,text]
+[source,golo]
 ----
 # This is a comment
 println("WTF?") # it works here, too
@@ -185,7 +210,7 @@ compilation error.
 
 Here are a few examples:
 
-[source,text]
+[source,golo]
 ----
 # Ok
 var i = 3
@@ -202,7 +227,7 @@ var foo
 Valid names contain upper and lower case letters within the `[a..z]` range, underscores (`_`),
 dollar symbols (`$`) and numbers. In any case, an identifier must not start with a number.
 
-[source,text]
+[source,golo]
 ----
 # Ok, but not necessarily great for humans...
 let _$_f_o_$$666 = 666
@@ -228,9 +253,9 @@ API. We give them along with examples in <<data-literals,the data literals table
 
 |`java.lang.Character` | `'a'`, `'b'`, ...
 
-|`java.lang.Integer` | `123`, `-123`, ...
+|`java.lang.Integer` | `123`, `-123`, `1_234`, ...
 
-|`java.lang.Long` | `123_L`, `-123_L`, ...
+|`java.lang.Long` | `123_L`, `-123_L`, `1_234_L`, ...
 
 |`java.lang.Double` | `1.234`, `-1.234`, `1.234e9`, ...
 
@@ -244,6 +269,7 @@ API. We give them along with examples in <<data-literals,the data literals table
 
 Speaking of strings, Golo also supports multi-line strings using the `"""` delimiters, as in:
 
+[source,golo]
 ----
 let text = """This is
 a multi-line string.
@@ -264,6 +290,107 @@ a multi-line string.
     cool
       is
         that?
+----
+
+=== Collection literals ===
+
+Golo support special support for common collections. The syntax uses brackets prefixed by a
+collection name, as in:
+
+[source,golo]
+----
+let s = set[1, 2, "a", "b"]
+let v = vector[1, 2, 3]
+let m = map[[1, "a"], [2, "b"]]
+# (...)
+----
+
+The syntax and type matchings are the following:
+
+[options="header",id="collection-literals-matching"]
+|===
+|Collection |Java type |Syntax
+
+|Tuple|
+`gololang.Tuple`|
+`tuple[1, 2, 3]`, or simply `[1, 2, 3]`
+
+|Array|
+`java.lang.Object[]`|
+`array[1, 2, 3]`
+
+|List|
+`java.util.LinkedList`|
+`list[1, 2, 3]`
+
+|Vector|
+`java.util.ArrayList`|
+`vector[1, 2, 3]`
+
+|Set|
+`java.util.LinkedHashSet`|
+`set[1, 2, 3]`
+
+|Map|
+`java.util.LinkedHashMap`|
+`map[[1, "a"], [2, "b"]]`
+
+|===
+
+==== A note on tuples ====
+
+Tuples essentially behave as immutable arrays.
+
+The `gololang.Tuple` class provides the following methods:
+
+- a constructor with a variable-arguments list of values,
+- a `get(index)` method to get the element at a specified index,
+- `size()` and `isEmpty()` methods that do what their names suggest,
+- an `iterator()` method because tuples are iterable, and
+- `equals(other)`, `hashCode()` and `toString()` do just what you would expect.
+
+==== A note on maps ====
+
+The map collection literal expects entries to be specified as tuples where the first entry is the
+key, and the second entry is the value. This allows nested structures to be specified as in:
+
+[source,golo]
+----
+map[
+  ["foo", "bar"],
+  ["plop", set[1, 2, 3, 4, 5]],
+  ["mrbean", map[
+    ["name", "Mr Bean"],
+    ["email", "bean@outlook.com"]
+  ]]
+]
+----
+
+There are a few rules to observe:
+
+- not providing a series of tuples will yield class cast exceptions,
+- tuples must have at least 2 entries or will yield index bound exceptions,
+- tuples with more than 2 entries are ok, but only the first 2 entries matter.
+
+Because of that, the following code compiles but raises exceptions at runtime:
+
+[source,golo]
+----
+let m1 = map[1, 2, 4, 5]
+let m2 = map[
+  [1],
+  ["a", "b"]
+]
+----
+
+The rationale for map literals to be loose is that we let you put any valid Golo expression, like
+functions returning valid tuples:
+
+[source,golo]
+----
+let a = -> [1, 'a']
+let b = -> [2, 'b']
+let m = map[a(), b()]
 ----
 
 === Operators ===
@@ -334,7 +461,7 @@ invoke instance methods.
 You could for instance call the `toString()` method that any Java object has, and print it out as
 follows:
 
-[source,text]
+[source,golo]
 ----
 println(123: toString())
 println(someObject: toString())
@@ -355,11 +482,12 @@ be invoked on arrays:
 - `iterator()` returns a `java.util.Iterator`,
 - `toString()` delegates to `java.util.Arrays.toString(Object[])`,
 - `asList()` delegates to `java.util.Arrays.asList(Object[])`,
-- `equals(someArray)` delegates to `java.util.Arrays.equals(this, someArray)`.
+- `equals(someArray)` delegates to `java.util.Arrays.equals(this, someArray)`,
+- `getClass()` return the array class.
 
 Given a reference `a` on some array:
 
-[source,text]
+[source,golo]
 ----
 # Gets the element at index 0
 a: get(0)
@@ -378,8 +506,16 @@ WARNING: The methods above do **not** perform array bound checks.
 
 Finally, arrays can be created with the `Array` function, as in:
 
+[source,golo]
 ----
 let a = Array(1, 2, 3, 4)
 let b = Array("a", "b")
 ----
 
+You can of course take advantage of the `array` collection literal, too:
+
+[source,golo]
+----
+let a = array[1, 2, 3, 4]
+let b = array["a", "b"]
+----

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2013 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
+ * Copyright 2012-2014 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package fr.insalyon.citi.golo.compiler;
 
 import fr.insalyon.citi.golo.compiler.ir.GoloModule;
 import fr.insalyon.citi.golo.compiler.parser.ASTCompilationUnit;
+import fr.insalyon.citi.golo.compiler.parser.GoloOffsetParser;
 import fr.insalyon.citi.golo.compiler.parser.GoloParser;
 import fr.insalyon.citi.golo.compiler.parser.ParseException;
 
@@ -58,6 +59,9 @@ public class GoloCompiler {
     return exceptionBuilder;
   }
 
+  private void resetExceptionBuilder() {
+    exceptionBuilder = null;
+  }
   /**
    * Initializes a parser from an input stream. This method is made public for the requirements of IDEs support.
    *
@@ -92,13 +96,19 @@ public class GoloCompiler {
    * @throws GoloCompilationException if a problem occurs during any phase of the compilation work.
    */
   public final List<CodeGenerationResult> compile(String goloSourceFilename, InputStream sourceCodeInputStream) throws GoloCompilationException {
+    resetExceptionBuilder();
     ASTCompilationUnit compilationUnit = parse(goloSourceFilename, initParser(sourceCodeInputStream));
+    throwIfErrorEncountered();
     GoloModule goloModule = check(compilationUnit);
+    throwIfErrorEncountered();
+    JavaBytecodeGenerationGoloIrVisitor bytecodeGenerator = new JavaBytecodeGenerationGoloIrVisitor();
+    return bytecodeGenerator.generateBytecode(goloModule, goloSourceFilename);
+  }
+
+  private void throwIfErrorEncountered() {
     if (!getProblems().isEmpty()) {
       exceptionBuilder.doThrow();
     }
-    JavaBytecodeGenerationGoloIrVisitor bytecodeGenerator = new JavaBytecodeGenerationGoloIrVisitor();
-    return bytecodeGenerator.generateBytecode(goloModule, goloSourceFilename);
   }
 
   /**
@@ -157,7 +167,6 @@ public class GoloCompiler {
     } catch (ParseException pe) {
       exceptionBuilder.report(pe, compilationUnit);
     }
-
     return compilationUnit;
   }
 
@@ -188,6 +197,6 @@ public class GoloCompiler {
    * @return the parser for <code>sourceReader</code>.
    */
   protected GoloParser createGoloParser(Reader sourceReader) {
-    return new GoloParser(sourceReader);
+    return new GoloOffsetParser(sourceReader);
   }
 }

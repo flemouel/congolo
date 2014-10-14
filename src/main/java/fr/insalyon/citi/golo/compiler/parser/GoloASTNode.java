@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2013 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
+ * Copyright 2012-2014 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,12 +21,13 @@ import fr.insalyon.citi.golo.compiler.ir.GoloElement;
 public class GoloASTNode extends SimpleNode {
 
   private GoloElement irElement;
+  private String documentation;
 
   public void setIrElement(GoloElement element) {
     this.irElement = element;
 
     if (jjtGetFirstToken() != null) {
-      // Only add a reverse weak ref to this ASTNode if it was contstructed by 
+      // Only add a reverse weak ref to this ASTNode if it was constructed by
       // the parser and is  really part of the AST (on the contrary, temporary
       // AST elements used in the ParseTreeToGoloIR visitor to create IR 
       // elements should not be referenced, since they can be garbage collected
@@ -58,5 +59,13 @@ public class GoloASTNode extends SimpleNode {
   @Override
   public Object jjtAccept(GoloParserVisitor visitor, Object data) {
     return visitor.visit(this, data);
+  }
+
+  public String getDocumentation() {
+    return documentation;
+  }
+
+  public void setDocumentation(String documentation) {
+    this.documentation = documentation;
   }
 }

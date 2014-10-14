@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2013 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
+ * Copyright 2012-2014 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,6 +41,8 @@ public final class GoloFunction extends GoloElement {
   private boolean varargs;
   private Block block;
   private boolean synthetic = false;
+  private String syntheticSelfName = null;
+  private LinkedList<Decorator> decorators = new LinkedList<>();
 
   public GoloFunction(String name, Visibility visibility, Scope scope) {
     this.name = name;
@@ -75,6 +77,11 @@ public final class GoloFunction extends GoloElement {
     this.syntheticParameterCount = this.syntheticParameterCount + 1;
   }
 
+  public void removeSyntheticParameter(String name) {
+    this.syntheticParameterNames.remove(name);
+    this.syntheticParameterCount = this.syntheticParameterCount - 1;
+  }
+
   public void setVarargs(boolean varargs) {
     this.varargs = varargs;
   }
@@ -89,6 +96,14 @@ public final class GoloFunction extends GoloElement {
 
   public void setSynthetic(boolean synthetic) {
     this.synthetic = synthetic;
+  }
+
+  public String getSyntheticSelfName() {
+    return syntheticSelfName;
+  }
+
+  public void setSyntheticSelfName(String syntheticSelfName) {
+    this.syntheticSelfName = syntheticSelfName;
   }
 
   public Visibility getVisibility() {
@@ -109,6 +124,22 @@ public final class GoloFunction extends GoloElement {
 
   public void setBlock(Block block) {
     this.block = block;
+  }
+
+  public void addDecorator(Decorator decorator) {
+    this.decorators.addLast(decorator);
+  }
+
+  public List<Decorator> getDecorators() {
+    return decorators;
+  }
+
+  public boolean isMain() {
+    return name.equals("main") && getArity() == 1;
+  }
+
+  public boolean isModuleInit() {
+    return "<clinit>".equals(name);
   }
 
   public void accept(GoloIrVisitor visitor) {

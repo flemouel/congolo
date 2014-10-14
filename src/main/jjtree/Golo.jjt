@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2013 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
+ * Copyright 2012-2014 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,9 +36,11 @@ package fr.insalyon.citi.golo.compiler.parser;
 
 import java.util.List;
 import java.util.LinkedList;
+import java.util.LinkedHashSet;
 import java.util.Collections;
 
 import fr.insalyon.citi.golo.compiler.utils.StringUnescaping;
+import fr.insalyon.citi.golo.compiler.utils.StringBlockIndenter;
 import fr.insalyon.citi.golo.compiler.GoloCompilationException;
 
 public class GoloParser {
@@ -87,13 +89,6 @@ public class GoloParser {
     public String toString() {
       return "FunctionRef{module=" + module + ",name=" + name + "}";
     }
-  }
-  
-  public static void main(String[] args) throws Throwable {
-    GoloParser parser = new GoloParser(System.in);    
-    // ASTCompilationUnit unit = parser.CompilationUnit();
-    ASTFunctionDeclaration unit = parser.FunctionDeclaration();
-    unit.dump("% ");
   }
 }
 
@@ -169,6 +164,8 @@ TOKEN :
   < BREAK: "break" >
   |
   < CONTINUE: "continue" >
+  |
+  < STRUCT: "struct" >
 }
 
 // Operators
@@ -188,6 +185,12 @@ TOKEN :
   < INVOCATION: (":" | "?:") >
 }
 
+// Specials
+TOKEN :
+{
+ < DECORATOR: "@" >
+}
+
 // References
 TOKEN :
 {
@@ -199,7 +202,7 @@ TOKEN :
 // Literals
 TOKEN :
 {
-  < NUMBER: ("-")? ["0"-"9"] (["0"-"9"])* >
+  < NUMBER: ("-")? ["0"-"9"] (("_")? ["0"-"9"])* >
   |
   < LONG_NUMBER: <NUMBER> "_L" >
   |
@@ -224,6 +227,8 @@ TOKEN :
   < CLASSREF: <IDENTIFIER> ("." <IDENTIFIER>)* (".class" | ".module") >
   |
   < FUNREF: "^" (<IDENTIFIER> ("." <IDENTIFIER>)* "::")? <IDENTIFIER> >
+  |
+  < COLL_START: ("array" | "list" | "set" | "map" | "vector" | "tuple" )? "[" >
 }
 
 // Multiline strings
@@ -263,6 +268,27 @@ TOKEN :
   < COMMENT: "#" (~["\n", "\r"])* ("\n" | "\r" | "\r\n")? >
 }
 
+// Documentation
+
+MORE :
+{
+  < "----" (" " | "\t")* ("\n" | "\r" | "\r\n") > : WithinDocumentation
+}
+
+<WithinDocumentation>
+MORE :
+{
+  < ~[] >
+}
+
+<WithinDocumentation>
+TOKEN :
+{
+  < DOCUMENTATION : "----" (" " | "\t")* ("\n" | "\r" | "\r\n") > : DEFAULT
+}
+
+// ............................................................................................. //
+
 TOKEN_MGR_DECLS :
 {
     public static interface TokenCompleter {
@@ -287,7 +313,6 @@ JAVACODE
 void error() {
   throw generateParseException();
 }
-
 
 void BlankLine() #void:{}
 {
@@ -381,7 +406,8 @@ Long LongLiteral() #void:
 {
   literal=<LONG_NUMBER>
   {
-    return Long.valueOf(literal.image.substring(0, literal.image.length() - 2));
+    String image = literal.image.substring(0, literal.image.length() - 2);
+    return Long.valueOf(image.replace("_",""));
   }
 }
 
@@ -392,7 +418,8 @@ Integer IntegerLiteral() #void:
 {
   literal=<NUMBER>
   {
-    return Integer.valueOf(literal.image);
+    String image = literal.image.replace("_","");
+    return Integer.valueOf(image);
   }
 }
 
@@ -448,6 +475,22 @@ GoloParser.FunctionRef FunctionRef() #void:
   }
 }
 
+String Documentation() #void:
+{
+  Token token;
+}
+{
+  token=<DOCUMENTATION>
+  {
+    String result = token.image.trim();
+    result = result.substring(4, result.length() - 4);
+    if (token.beginColumn > 1) {
+      result = StringBlockIndenter.unindent(result, token.beginColumn - 1);
+    }
+    return result;
+  }
+}
+
 // ............................................................................................. //
 
 ASTCompilationUnit CompilationUnit(): {}
@@ -481,11 +524,14 @@ ASTCompilationUnit CompilationUnit(): {}
 void ModuleDeclaration():
 {
   String name;
+  String documentation = null;
 }
 {
+  (documentation=Documentation())?
   <MODULE> name=QualifiedName()
   {
     jjtThis.setName(name);
+    jjtThis.setDocumentation(documentation);
   }
 }
 
@@ -508,31 +554,81 @@ void ImportDeclaration():
 void ToplevelDeclaration():
 {
   ASTFunctionDeclaration functionDecl;
+  ASTAugmentDeclaration augmentDecl;
+  ASTStructDeclaration structDecl;
+  ASTLetOrVar state;
   Token local = null;
+  String documentation = null;
 }
 {
-  
-  AugmentDeclaration() 
+  (
+    (documentation=Documentation())?
+    (
+      augmentDecl=AugmentDeclaration()
+      {
+        augmentDecl.setDocumentation(documentation);
+      }
+      |
+      (DecoratorDeclaration())* (local=<LOCAL>)? functionDecl=FunctionDeclaration()
+      {
+        if (local != null) {
+          functionDecl.setLocal(true);
+        }
+        functionDecl.setDocumentation(documentation);
+      }
+      |
+      structDecl=StructDeclaration()
+      {
+        structDecl.setDocumentation(documentation);
+      }
+    )
+  )
   | 
-  (local=<LOCAL>)? functionDecl=FunctionDeclaration()
+  state=LetOrVar()
   {
-    if (local != null) {
-      functionDecl.setLocal(true);
-    }
+    state.setModuleState(true);
   }
 }
 
-void AugmentDeclaration():
+ASTStructDeclaration StructDeclaration():
+{
+  Token name;
+  Token member;
+  LinkedHashSet<String> members = new LinkedHashSet<String>();
+}
+{
+  <STRUCT> name=<IDENTIFIER> "=" "{" BlankLines()
+    member=<IDENTIFIER> BlankLines()
+    {
+      members.add(member.image);
+    }
+    (
+      "," BlankLines() member=<IDENTIFIER> BlankLines()
+      {
+        members.add(member.image);
+      }
+    )*
+  "}"
+  {
+    jjtThis.setName(name.image);
+    jjtThis.setMembers(members);
+    return jjtThis;
+  }
+}
+
+ASTAugmentDeclaration AugmentDeclaration():
 {
   String target;
+  String documentation = null;
   ASTFunctionDeclaration func;
 }
 {
   <AUGMENT> target=QualifiedName() "{" BlankLines()
     ( 
-      func=FunctionDeclaration()
+      (documentation=Documentation())? (DecoratorDeclaration())* func=FunctionDeclaration()
       {
         func.setAugmentation(true);
+        func.setDocumentation(documentation);
         ASTFunction body = (ASTFunction) func.jjtGetChild(0);
         if (body.getArguments().isEmpty()) {
           String description = "Error: augmentation function " +
@@ -545,12 +641,14 @@ void AugmentDeclaration():
           }
           exceptionBuilder.report(GoloCompilationException.Problem.Type.AUGMENT_FUNCTION_NO_ARGS, body, description);
         }
+        documentation = null;
       }
       BlankLines() 
     )* 
   "}"
   {
     jjtThis.setTarget(target);
+    return jjtThis;
   } 
 }
 
@@ -562,6 +660,20 @@ ASTFunctionDeclaration FunctionDeclaration():
   <FUNCTION> name=<IDENTIFIER> "=" Function()
   {
     jjtThis.setName(name.image);
+    return jjtThis;
+  }
+}
+
+ASTDecoratorDeclaration DecoratorDeclaration(): {}
+{
+  <DECORATOR>
+  (
+    LOOKAHEAD(2) FunctionInvocation()
+    |
+    LOOKAHEAD(2) Reference()
+  )
+  BlankLines()
+  {
     return jjtThis;
   }
 }
@@ -670,7 +782,7 @@ void TryCatchFinally():
 
 void ExpressionStatement() #void: {}
 {
-  CommutativeExpression() 
+  CommutativeExpression()
 }
 
 void TerminalExpression() #void: {}
@@ -684,6 +796,8 @@ void TerminalExpression() #void: {}
   Literal()
   |
   Function()
+  |
+  CollectionLiteral()
 }
 
 void UnaryExpression():
@@ -747,6 +861,7 @@ void MethodInvocation():
 }
 {
   token=<IDENTIFIER> "("  (BlankLine())? (Expressions())? ")"
+  (LOOKAHEAD(2) AnonymousFunctionInvocation())*
   {
     jjtThis.setName(token.image);
   }
@@ -861,6 +976,25 @@ void Literal():
   )
 }
 
+void CollectionLiteral():
+{
+  Token token;
+}
+{
+  token=<COLL_START> (BlankLine())?
+  (
+    ExpressionStatement() ("," (BlankLine())? ExpressionStatement())* (BlankLine())?
+  )?
+  "]"
+  {
+    String image = token.image;
+    jjtThis.setType(image.substring(0, image.length() - 1));
+    if (jjtThis.getType().isEmpty()) {
+      jjtThis.setType("tuple");
+    }
+  }
+}
+
 void Reference():{}
 {
   <IDENTIFIER>
@@ -869,21 +1003,23 @@ void Reference():{}
   }
 }
 
-void LetOrVar():
+ASTLetOrVar LetOrVar():
 {
   Token idToken;
 }
 {
-  <LET> idToken=<IDENTIFIER> "="  (BlankLine())? ExpressionStatement()
+  <LET> idToken=<IDENTIFIER> "=" (BlankLine())? ExpressionStatement()
   {
     jjtThis.setType(ASTLetOrVar.Type.LET);
     jjtThis.setName(idToken.image);
+    return jjtThis;
   }
   |
-  <VAR> idToken=<IDENTIFIER> "="  (BlankLine())? ExpressionStatement()
+  <VAR> idToken=<IDENTIFIER> "=" (BlankLine())? ExpressionStatement()
   {
     jjtThis.setType(ASTLetOrVar.Type.VAR);
     jjtThis.setName(idToken.image);
+    return jjtThis;
   }
 }
 
@@ -892,7 +1028,7 @@ void Assignment():
   Token idToken;
 }
 {
-  idToken=<IDENTIFIER> "="  (BlankLine())? ExpressionStatement()
+  idToken=<IDENTIFIER> "=" (BlankLine())? ExpressionStatement()
   {
     jjtThis.setName(idToken.image);
   }
@@ -908,12 +1044,18 @@ void Expressions() #void: {}
   ExpressionStatement() ("," (BlankLine())? ExpressionStatement())*
 }
 
+void AnonymousFunctionInvocation(): {}
+{
+  "(" (BlankLine())? (Expressions())? ")"
+}
+
 void FunctionInvocation():
 {
   String name;
 }
 {
   name=QualifiedName() "(" (BlankLine())? (Expressions())? ")"
+  (LOOKAHEAD(2) AnonymousFunctionInvocation())*
   {
     jjtThis.setName(name);
   }
@@ -934,18 +1076,18 @@ void ConditionalBranching(): {}
 
 void Case(): {}
 {
-  <CASE> "{" (BlankLine())?
-    ( <WHEN> ExpressionStatement() Block() (BlankLine())? )+
-    <OTHERWISE> Block() (BlankLine())?
+  <CASE> "{" BlankLines()
+    ( <WHEN> ExpressionStatement() Block() BlankLines() )+
+    <OTHERWISE> Block() BlankLines()
   "}"
 }
 
 void Match(): {}
 {
-  <MATCH> "{" (BlankLine())?
-    ( <WHEN> (BlankLine())? ExpressionStatement() (BlankLine())? 
-      <THEN> (BlankLine())? ExpressionStatement() (BlankLine())? )+
-    <OTHERWISE>  (BlankLine())? ExpressionStatement() (BlankLine())?
+  <MATCH> "{" BlankLines()
+    ( <WHEN> BlankLines() ExpressionStatement() BlankLines()
+      <THEN> BlankLines() ExpressionStatement() BlankLines() )+
+    <OTHERWISE>  BlankLines() ExpressionStatement() BlankLines()
   "}"
 }
 

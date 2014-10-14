@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2013 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
+ * Copyright 2012-2014 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,13 @@ package fr.insalyon.citi.golo.compiler.ir;
 public class FunctionInvocation extends AbstractInvocation {
 
   private boolean onReference = false;
+  private boolean onModuleState = false;
+  private boolean anonymous = false;
+
+  public FunctionInvocation() {
+    super("anonymous");
+    anonymous = true;
+  }
 
   public FunctionInvocation(String name) {
     super(name);
@@ -30,6 +37,18 @@ public class FunctionInvocation extends AbstractInvocation {
 
   public void setOnReference(boolean onReference) {
     this.onReference = onReference;
+  }
+
+  public boolean isAnonymous() {
+    return anonymous;
+  }
+
+  public boolean isOnModuleState() {
+    return onModuleState;
+  }
+
+  public void setOnModuleState(boolean onModuleState) {
+    this.onModuleState = onModuleState;
   }
 
   @Override

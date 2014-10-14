@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2013 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
+ * Copyright 2012-2014 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ import static java.util.Collections.unmodifiableSet;
 public final class ReferenceTable {
 
   private ReferenceTable parent;
-  private final Map<String, LocalReference> table = new HashMap<>();
+  private final Map<String, LocalReference> table = new LinkedHashMap<>();
 
   public ReferenceTable() {
     this(null);
@@ -67,7 +67,7 @@ public final class ReferenceTable {
   }
 
   public Set<String> symbols() {
-    HashSet<String> localSymbols = new HashSet<>(table.keySet());
+    LinkedHashSet<String> localSymbols = new LinkedHashSet<>(table.keySet());
     if (parent != null) {
       localSymbols.addAll(parent.symbols());
     }
@@ -75,7 +75,7 @@ public final class ReferenceTable {
   }
 
   public Collection<LocalReference> references() {
-    Collection<LocalReference> localReferences = new HashSet<>(table.values());
+    Collection<LocalReference> localReferences = new LinkedHashSet<>(table.values());
     if (parent != null) {
       for (LocalReference ref : parent.references()) {
         if (!table.containsKey(ref.getName())) {
@@ -96,9 +96,9 @@ public final class ReferenceTable {
     for (LocalReference reference : references()) {
       String refName = reference.getName();
       if (turnIntoConstants && !tableSymbols.contains(refName)) {
-        referenceTable.add(new LocalReference(LocalReference.Kind.CONSTANT, refName));
+        referenceTable.add(new LocalReference(LocalReference.Kind.CONSTANT, refName, reference.isSynthetic()));
       } else {
-        referenceTable.add(new LocalReference(reference.getKind(), refName));
+        referenceTable.add(new LocalReference(reference.getKind(), refName, reference.isSynthetic()));
       }
     }
     return referenceTable;

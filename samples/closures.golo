@@ -1,4 +1,4 @@
-# Copyright 2012-2013 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
+# Copyright 2012-2014 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
 # 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,6 +24,11 @@ function main = |args| {
   let addToTen = adder: bindTo(10)
   println(addToTen: invokeWithArguments(2))
   println(addToTen(2))
+
+  let adding = |x| -> |y| -> adder(x, y)
+  let addingTen = adding(10)
+  println(addingTen(4))
+  println(adding(2)(4))
 
   println(sayHello("Julien"))
 

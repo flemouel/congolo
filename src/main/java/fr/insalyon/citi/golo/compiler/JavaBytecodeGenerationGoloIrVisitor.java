@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2013 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
+ * Copyright 2012-2014 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,15 +19,13 @@ package fr.insalyon.citi.golo.compiler;
 import fr.insalyon.citi.golo.compiler.ir.*;
 import fr.insalyon.citi.golo.compiler.parser.GoloParser;
 import fr.insalyon.citi.golo.runtime.OperatorType;
-import org.objectweb.asm.ClassWriter;
-import org.objectweb.asm.Handle;
-import org.objectweb.asm.Label;
-import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.*;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodType;
 import java.util.*;
 
+import static fr.insalyon.citi.golo.compiler.JavaBytecodeUtils.*;
 import static fr.insalyon.citi.golo.compiler.ir.GoloFunction.Visibility.PUBLIC;
 import static fr.insalyon.citi.golo.runtime.OperatorType.*;
 import static java.lang.invoke.MethodType.genericMethodType;
@@ -81,6 +79,7 @@ class JavaBytecodeGenerationGoloIrVisitor implements GoloIrVisitor {
 
   private ClassWriter classWriter;
   private String klass;
+  private String jvmKlass;
   private MethodVisitor methodVisitor;
   private List<CodeGenerationResult> generationResults;
   private String sourceFilename;
@@ -88,20 +87,8 @@ class JavaBytecodeGenerationGoloIrVisitor implements GoloIrVisitor {
 
   private static class Context {
     private final Deque<ReferenceTable> referenceTableStack = new LinkedList<>();
-    private final Deque<Integer> methodArityStack = new LinkedList<>();
-    private final Deque<LabelRange> labelRangeStack = new LinkedList<>();
     private final Map<LoopStatement, Label> loopStartMap = new HashMap<>();
     private final Map<LoopStatement, Label> loopEndMap = new HashMap<>();
-  }
-
-  private static class LabelRange {
-    final Label begin;
-    final Label end;
-
-    private LabelRange(Label begin, Label end) {
-      this.begin = begin;
-      this.end = end;
-    }
   }
 
   public List<CodeGenerationResult> generateBytecode(GoloModule module, String sourceFilename) {
@@ -120,14 +107,44 @@ class JavaBytecodeGenerationGoloIrVisitor implements GoloIrVisitor {
     classWriter.visitSource(sourceFilename, null);
     writeImportMetaData(module.getImports());
     klass = module.getPackageAndClass().toString();
+    jvmKlass = module.getPackageAndClass().toJVMType();
     for (GoloFunction function : module.getFunctions()) {
       function.accept(this);
     }
     for (Map.Entry<String, Set<GoloFunction>> entry : module.getAugmentations().entrySet()) {
       generateAugmentationBytecode(module, entry.getKey(), entry.getValue());
     }
+    if (module.getStructs().size() > 0) {
+      JavaBytecodeStructGenerator structGenerator = new JavaBytecodeStructGenerator();
+      for (Struct struct : module.getStructs()) {
+        generationResults.add(structGenerator.compile(struct, sourceFilename));
+      }
+    }
+    for (LocalReference moduleState : module.getModuleState()) {
+      writeModuleState(moduleState);
+    }
     writeAugmentsMetaData(module.getAugmentations().keySet());
     classWriter.visitEnd();
+  }
+
+  private void writeModuleState(LocalReference moduleState) {
+    String name = moduleState.getName();
+    classWriter.visitField(ACC_PRIVATE | ACC_STATIC, name, "Ljava/lang/Object;", null, null).visitEnd();
+
+    MethodVisitor mv = classWriter.visitMethod(ACC_PRIVATE | ACC_STATIC | ACC_SYNTHETIC, name, "()Ljava/lang/Object;", null, null);
+    mv.visitCode();
+    mv.visitFieldInsn(GETSTATIC, jvmKlass, name, "Ljava/lang/Object;");
+    mv.visitInsn(ARETURN);
+    mv.visitMaxs(0, 0);
+    mv.visitEnd();
+
+    mv = classWriter.visitMethod(ACC_PRIVATE | ACC_STATIC | ACC_SYNTHETIC, name, "(Ljava/lang/Object;)V", null, null);
+    mv.visitCode();
+    mv.visitVarInsn(ALOAD, 0);
+    mv.visitFieldInsn(PUTSTATIC, jvmKlass, name, "Ljava/lang/Object;");
+    mv.visitInsn(RETURN);
+    mv.visitMaxs(0, 0);
+    mv.visitEnd();
   }
 
   private void writeImportMetaData(Set<ModuleImport> imports) {
@@ -138,11 +155,11 @@ class JavaBytecodeGenerationGoloIrVisitor implements GoloIrVisitor {
         "()[Ljava/lang/String;",
         null, null);
     methodVisitor.visitCode();
-    loadInteger(importsArray.length);
+    loadInteger(methodVisitor, importsArray.length);
     methodVisitor.visitTypeInsn(ANEWARRAY, "java/lang/String");
     for (int i = 0; i < importsArray.length; i++) {
       methodVisitor.visitInsn(DUP);
-      loadInteger(i);
+      loadInteger(methodVisitor, i);
       methodVisitor.visitLdcInsn(importsArray[i].getPackageAndClass().toString());
       methodVisitor.visitInsn(AASTORE);
     }
@@ -159,11 +176,11 @@ class JavaBytecodeGenerationGoloIrVisitor implements GoloIrVisitor {
         "()[Ljava/lang/String;",
         null, null);
     methodVisitor.visitCode();
-    loadInteger(augmentArray.length);
+    loadInteger(methodVisitor, augmentArray.length);
     methodVisitor.visitTypeInsn(ANEWARRAY, "java/lang/String");
     for (int i = 0; i < augmentArray.length; i++) {
       methodVisitor.visitInsn(DUP);
-      loadInteger(i);
+      loadInteger(methodVisitor, i);
       methodVisitor.visitLdcInsn(augmentArray[i]);
       methodVisitor.visitInsn(AASTORE);
     }
@@ -209,27 +226,37 @@ class JavaBytecodeGenerationGoloIrVisitor implements GoloIrVisitor {
   public void visitFunction(GoloFunction function) {
     int accessFlags = (function.getVisibility() == PUBLIC) ? ACC_PUBLIC : ACC_PRIVATE;
     String signature;
-    if (function.isVarargs()) {
+    if (function.isMain()) {
+      signature = "([Ljava/lang/String;)V";
+    } else if (function.isVarargs()) {
       accessFlags = accessFlags | ACC_VARARGS;
       signature = goloVarargsFunctionSignature(function.getArity());
+    } else if (function.isModuleInit()) {
+      signature = "()V";
     } else {
       signature = goloFunctionSignature(function.getArity());
     }
     if (function.isSynthetic()) {
       accessFlags = accessFlags | ACC_SYNTHETIC;
     }
-    context.methodArityStack.push(function.getArity());
     methodVisitor = classWriter.visitMethod(
         accessFlags | ACC_STATIC,
         function.getName(),
         signature,
         null, null);
     methodVisitor.visitCode();
-    context.labelRangeStack.push(new LabelRange(new Label(), new Label()));
+    visitLine(function, methodVisitor);
     function.getBlock().accept(this);
+    if (function.isModuleInit()) {
+      methodVisitor.visitInsn(RETURN);
+    }
     methodVisitor.visitMaxs(0, 0);
     methodVisitor.visitEnd();
-    context.methodArityStack.pop();
+  }
+
+  @Override
+  public void visitDecorator(Decorator decorator) {
+    decorator.getExpressionStatement().accept(this);
   }
 
   private String goloFunctionSignature(int arity) {
@@ -244,26 +271,22 @@ class JavaBytecodeGenerationGoloIrVisitor implements GoloIrVisitor {
   public void visitBlock(Block block) {
     ReferenceTable referenceTable = block.getReferenceTable();
     context.referenceTableStack.push(referenceTable);
-    LabelRange labelRange;
-    if (context.labelRangeStack.isEmpty()) {
-      labelRange = new LabelRange(new Label(), new Label());
-    } else {
-      labelRange = context.labelRangeStack.pop();
-    }
-    // TODO: understand why this doesn't work...
-    // methodVisitor.visitLabel(labelRange.begin);
-    final int lastParameterIndex = context.methodArityStack.peek() - 1;
-    for (LocalReference localReference : referenceTable.ownedReferences()) {
-      if (localReference.getIndex() > lastParameterIndex) {
-        methodVisitor.visitLocalVariable(localReference.getName(), TOBJECT, null,
-            labelRange.begin, labelRange.end, localReference.getIndex());
-      }
-    }
+    Label blockStart = new Label();
+    Label blockEnd = new Label();
+    methodVisitor.visitLabel(blockStart);
     for (GoloStatement statement : block.getStatements()) {
+      visitLine(statement, methodVisitor);
       statement.accept(this);
       insertMissingPop(statement);
     }
-    // methodVisitor.visitLabel(labelRange.end);
+    methodVisitor.visitLabel(blockEnd);
+    for (LocalReference localReference : referenceTable.ownedReferences()) {
+      if (localReference.isModuleState()) {
+        continue;
+      }
+      methodVisitor.visitLocalVariable(localReference.getName(), TOBJECT, null,
+          blockStart, blockEnd, localReference.getIndex());
+    }
     context.referenceTableStack.pop();
   }
 
@@ -283,38 +306,6 @@ class JavaBytecodeGenerationGoloIrVisitor implements GoloIrVisitor {
     return operation.getType() == METHOD_CALL || operation.getType() == ELVIS_METHOD_CALL;
   }
 
-  private static boolean between(int value, int lower, int upper) {
-    return (value >= lower) && (value <= upper);
-  }
-
-  private static final int[] ICONST = {ICONST_M1, ICONST_0, ICONST_1, ICONST_2, ICONST_3, ICONST_4, ICONST_5};
-
-  private void loadInteger(int value) {
-    if (between(value, Short.MIN_VALUE, Short.MAX_VALUE)) {
-      if (between(value, Byte.MIN_VALUE, Byte.MAX_VALUE)) {
-        if (between(value, -1, 5)) {
-          methodVisitor.visitInsn(ICONST[value + 1]);
-        } else {
-          methodVisitor.visitIntInsn(BIPUSH, value);
-        }
-      } else {
-        methodVisitor.visitIntInsn(SIPUSH, value);
-      }
-    } else {
-      methodVisitor.visitLdcInsn(value);
-    }
-  }
-
-  private void loadLong(long value) {
-    if (value == 0) {
-      methodVisitor.visitInsn(LCONST_0);
-    } else if (value == 1) {
-      methodVisitor.visitInsn(LCONST_1);
-    } else {
-      methodVisitor.visitLdcInsn(value);
-    }
-  }
-
   @Override
   public void visitConstantStatement(ConstantStatement constantStatement) {
     Object value = constantStatement.getValue();
@@ -324,19 +315,19 @@ class JavaBytecodeGenerationGoloIrVisitor implements GoloIrVisitor {
     }
     if (value instanceof Integer) {
       int i = (Integer) value;
-      loadInteger(i);
+      loadInteger(methodVisitor, i);
       methodVisitor.visitMethodInsn(INVOKESTATIC, "java/lang/Integer", "valueOf", "(I)Ljava/lang/Integer;");
       return;
     }
     if (value instanceof Long) {
       long l = (Long) value;
-      loadLong(l);
+      loadLong(methodVisitor, l);
       methodVisitor.visitMethodInsn(INVOKESTATIC, "java/lang/Long", "valueOf", "(J)Ljava/lang/Long;");
       return;
     }
     if (value instanceof Boolean) {
       boolean b = (Boolean) value;
-      loadInteger(b ? 1 : 0);
+      loadInteger(methodVisitor, b ? 1 : 0);
       methodVisitor.visitMethodInsn(INVOKESTATIC, "java/lang/Boolean", "valueOf", "(Z)Ljava/lang/Boolean;");
       return;
     }
@@ -345,7 +336,7 @@ class JavaBytecodeGenerationGoloIrVisitor implements GoloIrVisitor {
       return;
     }
     if (value instanceof Character) {
-      loadInteger((Character) value);
+      loadInteger(methodVisitor, (Character) value);
       methodVisitor.visitMethodInsn(INVOKESTATIC, "java/lang/Character", "valueOf", "(C)Ljava/lang/Character;");
       return;
     }
@@ -386,7 +377,12 @@ class JavaBytecodeGenerationGoloIrVisitor implements GoloIrVisitor {
   @Override
   public void visitReturnStatement(ReturnStatement returnStatement) {
     returnStatement.getExpressionStatement().accept(this);
-    methodVisitor.visitInsn(ARETURN);
+    if (returnStatement.isReturningVoid()) {
+      methodVisitor.visitInsn(RETURN);
+    } else {
+      methodVisitor.visitInsn(ARETURN);
+    }
+
   }
 
   @Override
@@ -396,11 +392,7 @@ class JavaBytecodeGenerationGoloIrVisitor implements GoloIrVisitor {
     methodVisitor.visitInsn(ATHROW);
   }
 
-  private void visitInvocationArguments(AbstractInvocation invocation, Handle boostrap, int arity) {
-    visitInvocationArguments(invocation, boostrap, goloFunctionSignature(arity));
-  }
-
-  private void visitInvocationArguments(AbstractInvocation invocation, Handle bootstrap, String signature) {
+  private void visitInvocationArguments(AbstractInvocation invocation) {
     for (ExpressionStatement statement : invocation.getArguments()) {
       statement.accept(this);
     }
@@ -411,62 +403,83 @@ class JavaBytecodeGenerationGoloIrVisitor implements GoloIrVisitor {
     if (functionInvocation.isOnReference()) {
       ReferenceTable table = context.referenceTableStack.peek();
       methodVisitor.visitVarInsn(ALOAD, table.get(functionInvocation.getName()).getIndex());
+    }
+    if (functionInvocation.isOnModuleState()) {
+      visitReferenceLookup(new ReferenceLookup(functionInvocation.getName()));
+    }
+    if (functionInvocation.isAnonymous() || functionInvocation.isOnReference() || functionInvocation.isOnModuleState()) {
       methodVisitor.visitTypeInsn(CHECKCAST, "java/lang/invoke/MethodHandle");
       MethodType type = genericMethodType(functionInvocation.getArity() + 1).changeParameterType(0, MethodHandle.class);
-      visitInvocationArguments(functionInvocation, CLOSURE_INVOCATION_HANDLE, type.toMethodDescriptorString());
+      visitInvocationArguments(functionInvocation);
       methodVisitor.visitInvokeDynamicInsn(
           functionInvocation.getName().replaceAll("\\.", "#"),
           type.toMethodDescriptorString(),
           CLOSURE_INVOCATION_HANDLE);
     } else {
-      visitInvocationArguments(functionInvocation, FUNCTION_INVOCATION_HANDLE, functionInvocation.getArity());
+      visitInvocationArguments(functionInvocation);
       methodVisitor.visitInvokeDynamicInsn(
           functionInvocation.getName().replaceAll("\\.", "#"),
           goloFunctionSignature(functionInvocation.getArity()),
           FUNCTION_INVOCATION_HANDLE);
     }
+    for (FunctionInvocation invocation : functionInvocation.getAnonymousFunctionInvocations()) {
+      invocation.accept(this);
+    }
   }
 
   @Override
-  public void acceptMethodInvocation(MethodInvocation methodInvocation) {
-    visitInvocationArguments(methodInvocation, METHOD_INVOCATION_HANDLE, methodInvocation.getArity() + 1);
+  public void visitMethodInvocation(MethodInvocation methodInvocation) {
+    visitInvocationArguments(methodInvocation);
     methodVisitor.visitInvokeDynamicInsn(
         methodInvocation.getName().replaceAll("\\.", "#"),
         goloFunctionSignature(methodInvocation.getArity() + 1),
         METHOD_INVOCATION_HANDLE,
-        methodInvocation.isNullSafeGuarded());
-
+        (Boolean) methodInvocation.isNullSafeGuarded());
+    for (FunctionInvocation invocation : methodInvocation.getAnonymousFunctionInvocations()) {
+      invocation.accept(this);
+    }
   }
 
   @Override
   public void visitAssignmentStatement(AssignmentStatement assignmentStatement) {
     assignmentStatement.getExpressionStatement().accept(this);
-    methodVisitor.visitVarInsn(ASTORE, assignmentStatement.getLocalReference().getIndex());
+    LocalReference reference = assignmentStatement.getLocalReference();
+    if (reference.isModuleState()) {
+      methodVisitor.visitInvokeDynamicInsn(
+          (klass + "." + reference.getName()).replaceAll("\\.", "#"),
+          "(Ljava/lang/Object;)V",
+          FUNCTION_INVOCATION_HANDLE);
+    } else {
+      methodVisitor.visitVarInsn(ASTORE, reference.getIndex());
+    }
   }
 
   @Override
   public void visitReferenceLookup(ReferenceLookup referenceLookup) {
     LocalReference reference = referenceLookup.resolveIn(context.referenceTableStack.peek());
-    methodVisitor.visitVarInsn(ALOAD, reference.getIndex());
+    if (reference.isModuleState()) {
+      methodVisitor.visitInvokeDynamicInsn(
+          (klass + "." + referenceLookup.getName()).replaceAll("\\.", "#"),
+          "()Ljava/lang/Object;",
+          FUNCTION_INVOCATION_HANDLE);
+    } else {
+      methodVisitor.visitVarInsn(ALOAD, reference.getIndex());
+    }
   }
 
   @Override
   public void visitConditionalBranching(ConditionalBranching conditionalBranching) {
-    Label startLabel = new Label();
-    Label endLabel = new Label();
     Label branchingElseLabel = new Label();
     Label branchingExitLabel = new Label();
     conditionalBranching.getCondition().accept(this);
     asmBooleanValue();
     methodVisitor.visitJumpInsn(IFEQ, branchingElseLabel);
-    context.labelRangeStack.push(new LabelRange(startLabel, endLabel));
     conditionalBranching.getTrueBlock().accept(this);
     if (conditionalBranching.hasFalseBlock()) {
       if (!conditionalBranching.getTrueBlock().hasReturn()) {
         methodVisitor.visitJumpInsn(GOTO, branchingExitLabel);
       }
       methodVisitor.visitLabel(branchingElseLabel);
-      context.labelRangeStack.push(new LabelRange(endLabel, new Label()));
       conditionalBranching.getFalseBlock().accept(this);
       methodVisitor.visitLabel(branchingExitLabel);
     } else if (conditionalBranching.hasElseConditionalBranching()) {
@@ -495,7 +508,6 @@ class JavaBytecodeGenerationGoloIrVisitor implements GoloIrVisitor {
     loopStatement.getConditionStatement().accept(this);
     asmBooleanValue();
     methodVisitor.visitJumpInsn(IFEQ, loopEnd);
-    context.labelRangeStack.push(new LabelRange(new Label(), new Label()));
     loopStatement.getBlock().accept(this);
     if (loopStatement.hasPostStatement()) {
       loopStatement.getPostStatement().accept(this);
@@ -505,7 +517,7 @@ class JavaBytecodeGenerationGoloIrVisitor implements GoloIrVisitor {
   }
 
   @Override
-  public void acceptLoopBreakFlowStatement(LoopBreakFlowStatement loopBreakFlowStatement) {
+  public void visitLoopBreakFlowStatement(LoopBreakFlowStatement loopBreakFlowStatement) {
     Label jumpTarget;
     if (LoopBreakFlowStatement.Type.BREAK.equals(loopBreakFlowStatement.getType())) {
       jumpTarget = context.loopEndMap.get(loopBreakFlowStatement.getEnclosingLoop());
@@ -516,6 +528,109 @@ class JavaBytecodeGenerationGoloIrVisitor implements GoloIrVisitor {
     methodVisitor.visitJumpInsn(IFEQ, jumpTarget);
     // NOP + ATHROW invalid frames if the GOTO is followed by an else branch code...
     // methodVisitor.visitJumpInsn(GOTO, jumpTarget);
+  }
+
+  @Override
+  public void visitCollectionLiteral(CollectionLiteral collectionLiteral) {
+    // TODO generate bytecode for collections
+    switch (collectionLiteral.getType()) {
+      case tuple:
+        createTuple(collectionLiteral);
+        break;
+      case array:
+        createArray(collectionLiteral);
+        break;
+      case list:
+        createList(collectionLiteral);
+        break;
+      case vector:
+        createVector(collectionLiteral);
+        break;
+      case set:
+        createSet(collectionLiteral);
+        break;
+      case map:
+        createMap(collectionLiteral);
+        break;
+      default:
+        throw new UnsupportedOperationException("Can't handle collections of type " + collectionLiteral.getType() + " yet");
+    }
+  }
+
+  private void createMap(CollectionLiteral collectionLiteral) {
+    methodVisitor.visitTypeInsn(NEW, "java/util/LinkedHashMap");
+    methodVisitor.visitInsn(DUP);
+    methodVisitor.visitMethodInsn(INVOKESPECIAL, "java/util/LinkedHashMap", "<init>", "()V");
+    for (ExpressionStatement expression : collectionLiteral.getExpressions()) {
+      methodVisitor.visitInsn(DUP);
+      expression.accept(this);
+      methodVisitor.visitTypeInsn(CHECKCAST, "gololang/Tuple");
+      methodVisitor.visitInsn(DUP);
+      loadInteger(methodVisitor, 0);
+      methodVisitor.visitMethodInsn(INVOKEVIRTUAL, "gololang/Tuple", "get", "(I)Ljava/lang/Object;");
+      methodVisitor.visitInsn(SWAP);
+      loadInteger(methodVisitor, 1);
+      methodVisitor.visitMethodInsn(INVOKEVIRTUAL, "gololang/Tuple", "get", "(I)Ljava/lang/Object;");
+      methodVisitor.visitMethodInsn(INVOKEVIRTUAL, "java/util/LinkedHashMap", "put", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
+      methodVisitor.visitInsn(POP);
+    }
+  }
+
+  private void createSet(CollectionLiteral collectionLiteral) {
+    methodVisitor.visitTypeInsn(NEW, "java/util/LinkedHashSet");
+    methodVisitor.visitInsn(DUP);
+    methodVisitor.visitMethodInsn(INVOKESPECIAL, "java/util/LinkedHashSet", "<init>", "()V");
+    for (ExpressionStatement expression : collectionLiteral.getExpressions()) {
+      methodVisitor.visitInsn(DUP);
+      expression.accept(this);
+      methodVisitor.visitMethodInsn(INVOKEVIRTUAL, "java/util/LinkedHashSet", "add", "(Ljava/lang/Object;)Z");
+      methodVisitor.visitInsn(POP);
+    }
+  }
+
+  private void createVector(CollectionLiteral collectionLiteral) {
+    methodVisitor.visitTypeInsn(NEW, "java/util/ArrayList");
+    methodVisitor.visitInsn(DUP);
+    loadInteger(methodVisitor, collectionLiteral.getExpressions().size());
+    methodVisitor.visitMethodInsn(INVOKESPECIAL, "java/util/ArrayList", "<init>", "(I)V");
+    for (ExpressionStatement expression : collectionLiteral.getExpressions()) {
+      methodVisitor.visitInsn(DUP);
+      expression.accept(this);
+      methodVisitor.visitMethodInsn(INVOKEVIRTUAL, "java/util/ArrayList", "add", "(Ljava/lang/Object;)Z");
+      methodVisitor.visitInsn(POP);
+    }
+  }
+
+  private void createList(CollectionLiteral collectionLiteral) {
+    methodVisitor.visitTypeInsn(NEW, "java/util/LinkedList");
+    methodVisitor.visitInsn(DUP);
+    methodVisitor.visitMethodInsn(INVOKESPECIAL, "java/util/LinkedList", "<init>", "()V");
+    for (ExpressionStatement expression : collectionLiteral.getExpressions()) {
+      methodVisitor.visitInsn(DUP);
+      expression.accept(this);
+      methodVisitor.visitMethodInsn(INVOKEVIRTUAL, "java/util/LinkedList", "add", "(Ljava/lang/Object;)Z");
+      methodVisitor.visitInsn(POP);
+    }
+  }
+
+  private void createArray(CollectionLiteral collectionLiteral) {
+    loadInteger(methodVisitor, collectionLiteral.getExpressions().size());
+    methodVisitor.visitTypeInsn(ANEWARRAY, "java/lang/Object");
+    int i = 0;
+    for (ExpressionStatement expression : collectionLiteral.getExpressions()) {
+      methodVisitor.visitInsn(DUP);
+      loadInteger(methodVisitor, i);
+      expression.accept(this);
+      methodVisitor.visitInsn(AASTORE);
+      i = i + 1;
+    }
+  }
+
+  private void createTuple(CollectionLiteral collectionLiteral) {
+    methodVisitor.visitTypeInsn(NEW, "gololang/Tuple");
+    methodVisitor.visitInsn(DUP);
+    createArray(collectionLiteral);
+    methodVisitor.visitMethodInsn(INVOKESPECIAL, "gololang/Tuple", "<init>", "([Ljava/lang/Object;)V");
   }
 
   @Override
@@ -532,12 +647,12 @@ class JavaBytecodeGenerationGoloIrVisitor implements GoloIrVisitor {
       rethrowEnd = new Label();
     }
 
-    methodVisitor.visitTryCatchBlock(tryStart, tryEnd, catchStart, null);
     methodVisitor.visitLabel(tryStart);
     tryCatchFinally.getTryBlock().accept(this);
     if (tryCatchFinally.isTryCatch() || tryCatchFinally.isTryCatchFinally()) {
       methodVisitor.visitJumpInsn(GOTO, catchEnd);
     }
+    methodVisitor.visitTryCatchBlock(tryStart, tryEnd, catchStart, null);
     methodVisitor.visitLabel(tryEnd);
 
     if (tryCatchFinally.isTryFinally()) {
@@ -581,18 +696,18 @@ class JavaBytecodeGenerationGoloIrVisitor implements GoloIrVisitor {
         methodType(MethodHandle.class).toMethodDescriptorString(),
         CLOSUREREF_HANDLE,
         klass,
-        arity,
-        isVarArgs);
+        (Integer) arity,
+        (Boolean) isVarArgs);
     final int syntheticCount = closureReference.getTarget().getSyntheticParameterCount();
     if (syntheticCount > 0) {
       ReferenceTable table = context.referenceTableStack.peek();
       String[] refs = closureReference.getCapturedReferenceNames().toArray(new String[syntheticCount]);
-      loadInteger(0);
-      loadInteger(syntheticCount);
+      loadInteger(methodVisitor, 0);
+      loadInteger(methodVisitor, syntheticCount);
       methodVisitor.visitTypeInsn(ANEWARRAY, "java/lang/Object");
       for (int i = 0; i < syntheticCount; i++) {
         methodVisitor.visitInsn(DUP);
-        loadInteger(i);
+        loadInteger(methodVisitor, i);
         methodVisitor.visitVarInsn(ALOAD, table.get(refs[i]).getIndex());
         methodVisitor.visitInsn(AASTORE);
       }
@@ -601,11 +716,19 @@ class JavaBytecodeGenerationGoloIrVisitor implements GoloIrVisitor {
           "java/lang/invoke/MethodHandles",
           "insertArguments",
           "(Ljava/lang/invoke/MethodHandle;I[Ljava/lang/Object;)Ljava/lang/invoke/MethodHandle;");
+      if (isVarArgs) {
+        methodVisitor.visitLdcInsn(Type.getType(Object[].class));
+        methodVisitor.visitMethodInsn(
+            INVOKEVIRTUAL,
+            "java/lang/invoke/MethodHandle",
+            "asVarargsCollector",
+            "(Ljava/lang/Class;)Ljava/lang/invoke/MethodHandle;");
+      }
     }
   }
 
   @Override
-  public void acceptBinaryOperation(BinaryOperation binaryOperation) {
+  public void visitBinaryOperation(BinaryOperation binaryOperation) {
     OperatorType operatorType = binaryOperation.getType();
     if (AND.equals(operatorType)) {
       andOperator(binaryOperation);
@@ -621,7 +744,7 @@ class JavaBytecodeGenerationGoloIrVisitor implements GoloIrVisitor {
     binaryOperation.getRightExpression().accept(this);
     if (!isMethodCall(binaryOperation)) {
       String name = operatorType.name().toLowerCase();
-      methodVisitor.visitInvokeDynamicInsn(name, goloFunctionSignature(2), OPERATOR_HANDLE, 2);
+      methodVisitor.visitInvokeDynamicInsn(name, goloFunctionSignature(2), OPERATOR_HANDLE, (Integer) 2);
     }
   }
 
@@ -674,6 +797,6 @@ class JavaBytecodeGenerationGoloIrVisitor implements GoloIrVisitor {
   public void visitUnaryOperation(UnaryOperation unaryOperation) {
     String name = unaryOperation.getType().name().toLowerCase();
     unaryOperation.getExpressionStatement().accept(this);
-    methodVisitor.visitInvokeDynamicInsn(name, goloFunctionSignature(1), OPERATOR_HANDLE, 1);
+    methodVisitor.visitInvokeDynamicInsn(name, goloFunctionSignature(1), OPERATOR_HANDLE, (Integer) 1);
   }
 }

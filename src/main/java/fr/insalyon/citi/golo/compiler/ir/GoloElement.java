@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2013 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
+ * Copyright 2012-2014 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +29,10 @@ public class GoloElement {
 
   public GoloASTNode getASTNode() {
     return nodeRef.get();
+  }
+
+  public boolean hasASTNode() {
+    return (nodeRef != null) && (nodeRef.get() != null);
   }
 
   public PositionInSourceCode getPositionInSourceCode() {

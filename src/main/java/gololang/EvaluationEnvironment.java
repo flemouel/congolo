@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2013 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
+ * Copyright 2012-2014 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -58,7 +58,7 @@ import java.util.*;
  */
 public class EvaluationEnvironment {
 
-  private final GoloClassLoader goloClassLoader = new GoloClassLoader();
+  private final GoloClassLoader goloClassLoader;
   private final List<String> imports = new LinkedList<>();
 
   private static String anonymousFilename() {
@@ -67,6 +67,22 @@ public class EvaluationEnvironment {
 
   private static String anonymousModuleName() {
     return "module anonymous" + System.nanoTime();
+  }
+
+  /**
+   * Creates an evaluation environment using the current thread context classloader.
+   */
+  public EvaluationEnvironment() {
+    this(Thread.currentThread().getContextClassLoader());
+  }
+
+  /**
+   * Creates an evaluation environment using a parent classloader.
+   *
+   * @param parentClassLoader the parent classloader.
+   */
+  public EvaluationEnvironment(ClassLoader parentClassLoader) {
+    goloClassLoader = new GoloClassLoader(parentClassLoader);
   }
 
   /**

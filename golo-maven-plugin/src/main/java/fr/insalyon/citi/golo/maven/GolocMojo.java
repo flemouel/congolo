@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2013 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
+ * Copyright 2012-2014 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -54,14 +54,14 @@ public class GolocMojo extends AbstractMojo {
       return;
     }
     try {
-      Files.walkFileTree(root, new GoloFileVisitor());
+      Files.walkFileTree(root, new GolocFileVisitor());
     } catch (IOException e) {
       getLog().error(e);
       throw new MojoFailureException("I/O error", e);
     }
   }
 
-  private class GoloFileVisitor extends SimpleFileVisitor<Path> {
+  private class GolocFileVisitor extends SimpleFileVisitor<Path> {
 
     private final PathMatcher matcher = FileSystems.getDefault().getPathMatcher("glob:**/*.golo");
     private final GoloCompiler compiler = new GoloCompiler();

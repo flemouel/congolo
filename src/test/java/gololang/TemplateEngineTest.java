@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2013 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
+ * Copyright 2012-2014 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -94,5 +94,13 @@ public class TemplateEngineTest {
     String template = "<%@import java.lang.Math %><%= max(1, 2) %>";
     MethodHandle tpl = engine.compile(template);
     assertThat((String) tpl.invoke(null), is("2"));
+  }
+
+  @Test
+  public void quote_delimiting_text() throws Throwable {
+    TemplateEngine engine = new TemplateEngine();
+    String template = "<%@params url %><a href=\"<%= url %>\">Link</a>";
+    MethodHandle tpl = engine.compile(template);
+    assertThat((String) tpl.invoke("http://foo.bar/"), is("<a href=\"http://foo.bar/\">Link</a>"));
   }
 }

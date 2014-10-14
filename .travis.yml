@@ -1,12 +1,13 @@
 language: java
 
 jdk:
-  - oraclejdk7
   - openjdk7
+  - oraclejdk7
+  - oraclejdk8
+
+matrix:
+  fast_finish: true
 
 install: "rake special:bootstrap"
 
 script: "mvn clean install"
-
-notifications:
-  irc: "irc.freenode.org#golo-lang"
