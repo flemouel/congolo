@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2013 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
+ * Copyright 2012-2014 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@
 
 package gololang;
 
-import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import java.util.Iterator;
@@ -27,15 +26,9 @@ import static org.hamcrest.Matchers.is;
 
 public class LongRangeTest {
 
-  private LongRange range;
-
-  @BeforeMethod
-  public void prepare() {
-    range = new LongRange(1, 3);
-  }
-
   @Test
   public void check() {
+    LongRange range = new LongRange(1L, 3L);
     Iterator<Long> iterator = range.iterator();
     assertThat(iterator.hasNext(), is(true));
     assertThat(iterator.next(), is(1L));
@@ -46,6 +39,7 @@ public class LongRangeTest {
 
   @Test(expectedExceptions = NoSuchElementException.class)
   public void overflow() {
+    LongRange range = new LongRange(1L, 3L);
     Iterator<Long> iterator = range.iterator();
     for (int i = 0; i < 4; i++) {
       iterator.next();
@@ -54,17 +48,19 @@ public class LongRangeTest {
 
   @Test(expectedExceptions = UnsupportedOperationException.class)
   public void remove() {
+    LongRange range = new LongRange(1L, 3L);
     range.iterator().remove();
   }
 
   @Test
   public void empty() {
-    range = new LongRange(5, 4);
+    LongRange range = new LongRange(5, 4);
     assertThat(range.iterator().hasNext(), is(false));
   }
 
   @Test
   public void increment() {
+    LongRange range = new LongRange(1L, 3L);
     range.incrementBy(2);
     Iterator<Long> iterator = range.iterator();
     assertThat(iterator.hasNext(), is(true));
@@ -74,7 +70,7 @@ public class LongRangeTest {
 
   @Test
   public void singleton() {
-    range = new LongRange(0L, 1L);
+    LongRange range = new LongRange(0L, 1L);
     Iterator<Long> iterator = range.iterator();
     assertThat(iterator.hasNext(), is(true));
     assertThat(iterator.next(), is(0L));

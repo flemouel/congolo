@@ -1,5 +1,5 @@
 <!--
-  ~ Copyright 2012-2013 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
+  ~ Copyright 2012-2014 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -33,6 +33,7 @@
         <include>CONTRIB*</include>
         <include>THIRD-PARTY*</include>
         <include>samples/**/*</include>
+        <include>share/**/*</include>
       </includes>
       <useDefaultExcludes>true</useDefaultExcludes>
     </fileSet>
@@ -58,10 +59,11 @@
       <fileMode>0755</fileMode>
       <lineEnding>unix</lineEnding>
       <includes>
-        <include>golo*</include>
+        <include>golo</include>
+        <include>vanilla-golo</include>
       </includes>
       <excludes>
-        <exclude>golo*.bat</exclude>
+        <exclude>*.bat</exclude>
       </excludes>
     </fileSet>
     <fileSet>
@@ -69,7 +71,7 @@
       <outputDirectory>/bin</outputDirectory>
       <lineEnding>dos</lineEnding>
       <includes>
-        <include>golo*.bat</include>
+        <include>*.bat</include>
       </includes>
     </fileSet>
   </fileSets>

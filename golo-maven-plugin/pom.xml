@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  ~ Copyright 2012-2013 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
+  ~ Copyright 2012-2014 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@
 
   <groupId>org.golo-lang</groupId>
   <artifactId>golo-maven-plugin</artifactId>
-  <version>0-preview5-SNAPSHOT</version>
+  <version>1.2.0-SNAPSHOT</version>
 
   <parent>
     <groupId>org.sonatype.oss</groupId>
@@ -71,13 +71,16 @@
 
   <properties>
 
-    <gololang.version>0-preview5-SNAPSHOT</gololang.version>
+    <gololang.version>1.2.0-SNAPSHOT</gololang.version>
+    <txtmark.version>0.11</txtmark.version>
+
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <surefire.useFile>false</surefire.useFile>
 
     <maven-compiler-plugin.version>3.1</maven-compiler-plugin.version>
     <maven-plugin-api.version>3.0.5</maven-plugin-api.version>
     <maven-plugin-plugin.version>3.2</maven-plugin-plugin.version>
+    <maven-javadoc-plugin.version>2.9.1</maven-javadoc-plugin.version>
   </properties>
 
   <dependencies>
@@ -94,6 +97,12 @@
       <version>${gololang.version}</version>
     </dependency>
 
+    <dependency>
+      <groupId>com.github.rjeschke</groupId>
+      <artifactId>txtmark</artifactId>
+      <version>${txtmark.version}</version>
+    </dependency>
+
   </dependencies>
 
   <build>
@@ -107,6 +116,27 @@
         <configuration>
           <source>1.7</source>
           <target>1.7</target>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-plugin-plugin</artifactId>
+        <version>${maven-plugin-plugin.version}</version>
+        <configuration>
+          <extractors>
+            <extractor>java</extractor>
+          </extractors>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <version>${maven-javadoc-plugin.version}</version>
+        <configuration>
+          <additionalparam>-Xdoclint:none</additionalparam>
+          <failOnError>false</failOnError>
         </configuration>
       </plugin>
 

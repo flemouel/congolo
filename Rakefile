@@ -1,11 +1,11 @@
-# Copyright 2012-2013 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
-# 
+# Copyright 2012-2014 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
+#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
-# 
+#
 #     http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -40,10 +40,11 @@ task :doc do
   Dir.chdir("doc") do
     sh "rake clean all"
   end
+  sh "mvn org.golo-lang:golo-maven-plugin:golodoc -DoutputDirectory=doc/output/golodoc"
 end
 
 desc "Deploy snapshots"
-task :deploy => [:clean, :build] do
+task :deploy => [:clean, :build, :doc] do
   MAGIC = "mvn deploy"
   sh MAGIC
   Dir.chdir("golo-maven-plugin") do
@@ -52,7 +53,7 @@ task :deploy => [:clean, :build] do
 end
 
 desc "Release"
-task :release => [:clean, :all] do
+task :release => [:clean, 'special:bootstrap', :all] do
   MAGIC = "mvn deploy -P sonatype-oss-release"
   sh MAGIC
   Dir.chdir("golo-maven-plugin") do
@@ -100,7 +101,7 @@ namespace :test do
 end
 
 namespace :special do
-  
+
   desc "Bootstrap Golo and the Maven plug-in for a clean-room environment"
   task :bootstrap do
     sh "mvn clean install -P !bootstrapped"
@@ -117,7 +118,7 @@ namespace :special do
     Dir.chdir("golo-maven-plugin") do
       sh CMD
     end
-    Dir.chdir("benchmarks") do
+    Dir.chdir("jmh-benchmarks") do
       sh CMD
     end
   end
@@ -129,7 +130,19 @@ namespace :special do
     Dir.chdir("golo-maven-plugin") do
       sh CMD
     end
-    Dir.chdir("benchmarks") do
+    Dir.chdir("jmh-benchmarks") do
+      sh CMD
+    end
+  end
+
+  desc "Check for property updates (dependencies + plugins)"
+  task :check_property_updates do
+    CMD = "mvn versions:display-property-updates"
+    sh CMD
+    Dir.chdir("golo-maven-plugin") do
+      sh CMD
+    end
+    Dir.chdir("jmh-benchmarks") do
       sh CMD
     end
   end

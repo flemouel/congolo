@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2013 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
+ * Copyright 2012-2014 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,10 +18,12 @@ package fr.insalyon.citi.golo.compiler;
 
 import fr.insalyon.citi.golo.compiler.ir.GoloModule;
 import fr.insalyon.citi.golo.compiler.parser.ASTCompilationUnit;
+import fr.insalyon.citi.golo.compiler.parser.GoloOffsetParser;
 import fr.insalyon.citi.golo.compiler.parser.GoloParser;
 import fr.insalyon.citi.golo.compiler.parser.ParseException;
-import fr.insalyon.citi.golo.internal.testing.IrTreeDumper;
+import fr.insalyon.citi.golo.compiler.ir.IrTreeDumper;
 import fr.insalyon.citi.golo.internal.testing.TestUtils;
+
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -39,12 +41,12 @@ public class ParseTreeToGoloIrAndVisitorsTest {
 
   @DataProvider(name = "golo-files")
   public static Iterator<Object[]> data() {
-    return TestUtils.goloFilesIn("src/test/resources/for-parsing-and-compilation".replaceAll("/", File.separator));
+    return TestUtils.goloFilesIn("src/test/resources/for-parsing-and-compilation");
   }
 
   @Test(dataProvider = "golo-files")
   public void convert_then_apply_visitors(File goloFile) throws FileNotFoundException, ParseException {
-    GoloParser parser = new GoloParser(new FileInputStream(goloFile));
+    GoloParser parser = new GoloOffsetParser(new FileInputStream(goloFile));
     ASTCompilationUnit compilationUnit = parser.CompilationUnit();
     ParseTreeToGoloIrVisitor visitor = new ParseTreeToGoloIrVisitor();
 

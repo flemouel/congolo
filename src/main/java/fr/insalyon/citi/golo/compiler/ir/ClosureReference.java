@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2013 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
+ * Copyright 2012-2014 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,13 +16,13 @@
 
 package fr.insalyon.citi.golo.compiler.ir;
 
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Set;
 
 public class ClosureReference extends ExpressionStatement {
 
   private final GoloFunction target;
-  private final Set<String> capturedReferenceNames = new HashSet<>();
+  private final Set<String> capturedReferenceNames = new LinkedHashSet<>();
 
   public ClosureReference(GoloFunction target) {
     super();

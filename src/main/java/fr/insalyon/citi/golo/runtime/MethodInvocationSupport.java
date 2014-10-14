@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2013 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
+ * Copyright 2012-2014 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package fr.insalyon.citi.golo.runtime;
 
 import gololang.DynamicObject;
+import gololang.GoloStruct;
 
 import java.lang.invoke.*;
 import java.lang.reflect.Array;
@@ -24,8 +25,6 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.*;
 
-import static fr.insalyon.citi.golo.runtime.MethodInvocationSupport.InlineCache.State.DYNAMIC_OBJECT;
-import static fr.insalyon.citi.golo.runtime.MethodInvocationSupport.InlineCache.State.POLYMORPHIC;
 import static fr.insalyon.citi.golo.runtime.TypeMatching.*;
 import static java.lang.invoke.MethodHandles.*;
 import static java.lang.invoke.MethodType.methodType;
@@ -39,22 +38,16 @@ public class MethodInvocationSupport {
    * Remi Forax's JSR292 cookbooks.
    */
 
-  static class InlineCache extends MutableCallSite {
+  static final class InlineCache extends MutableCallSite {
 
     static final int MEGAMORPHIC_THRESHOLD = 5;
-
-    static enum State {
-      DYNAMIC_OBJECT, POLYMORPHIC
-    }
 
     final MethodHandles.Lookup callerLookup;
     final String name;
     final boolean nullSafeGuarded;
 
     int depth = 0;
-    State state = POLYMORPHIC;
-    MethodHandle fallback;
-    HashMap<Class, MethodHandle> vtable;
+    WeakHashMap<Class, MethodHandle> vtable;
 
     InlineCache(Lookup callerLookup, String name, MethodType type, boolean nullSafeGuarded) {
       super(type);
@@ -66,28 +59,24 @@ public class MethodInvocationSupport {
     boolean isMegaMorphic() {
       return depth > MEGAMORPHIC_THRESHOLD;
     }
-
-    void resetWith(MethodHandle target) {
-      setTarget(target);
-    }
   }
 
   private static final MethodHandle CLASS_GUARD;
-  private static final MethodHandle INSTANCE_GUARD;
   private static final MethodHandle FALLBACK;
   private static final MethodHandle VTABLE_LOOKUP;
-  private static final MethodHandle NOT_DYNAMIC_OBJECT;
 
-  private static final Set<String> DYNAMIC_OBJECT_RESERVED_METHOD_NAMES = new HashSet<String>() {
+  private static final HashSet<String> DYNAMIC_OBJECT_RESERVED_METHOD_NAMES = new HashSet<String>() {
     {
       add("get");
-      add("plug");
       add("define");
       add("undefine");
       add("mixin");
       add("copy");
       add("freeze");
       add("properties");
+      add("invoker");
+      add("hasMethod");
+      add("fallback");
     }
   };
 
@@ -100,11 +89,6 @@ public class MethodInvocationSupport {
           "classGuard",
           methodType(boolean.class, Class.class, Object.class));
 
-      INSTANCE_GUARD = lookup.findStatic(
-          MethodInvocationSupport.class,
-          "instanceGuard",
-          methodType(boolean.class, Object.class, Object.class));
-
       FALLBACK = lookup.findStatic(
           MethodInvocationSupport.class,
           "fallback",
@@ -114,11 +98,6 @@ public class MethodInvocationSupport {
           MethodInvocationSupport.class,
           "vtableLookup",
           methodType(MethodHandle.class, InlineCache.class, Object[].class));
-
-      NOT_DYNAMIC_OBJECT = lookup.findStatic(
-          MethodInvocationSupport.class,
-          "notDynamicObject",
-          methodType(boolean.class, Object.class));
 
     } catch (NoSuchMethodException | IllegalAccessException e) {
       throw new Error("Could not bootstrap the required method handles", e);
@@ -131,7 +110,6 @@ public class MethodInvocationSupport {
         .bindTo(callSite)
         .asCollector(Object[].class, type.parameterCount())
         .asType(type);
-    callSite.fallback = fallbackHandle;
     callSite.setTarget(fallbackHandle);
     return callSite;
   }
@@ -140,49 +118,49 @@ public class MethodInvocationSupport {
     return receiver.getClass() == expected;
   }
 
-  public static boolean instanceGuard(Object expected, Object receiver) {
-    return expected == receiver;
-  }
-
-  public static boolean notDynamicObject(Object receiver) {
-    return receiver.getClass() != DynamicObject.class;
-  }
-
   public static MethodHandle vtableLookup(InlineCache inlineCache, Object[] args) {
     Class<?> receiverClass = args[0].getClass();
     MethodHandle target = inlineCache.vtable.get(receiverClass);
     if (target == null) {
-      target = findTarget(receiverClass, inlineCache, args);
+      target = lookupTarget(receiverClass, inlineCache, args);
       inlineCache.vtable.put(receiverClass, target);
     }
     return target;
   }
 
-  public static Object fallback(InlineCache inlineCache, Object[] args) throws Throwable {
-
-    if (isCallOnDynamicObject(inlineCache, args[0])) {
-      return installDynamicObjectDispatch(inlineCache, args);
+  private static MethodHandle lookupTarget(Class<?> receiverClass, InlineCache inlineCache, Object[] args) {
+    if (!isCallOnDynamicObject(inlineCache, args[0])) {
+      return findTarget(receiverClass, inlineCache, args);
+    } else {
+      DynamicObject dynamicObject = (DynamicObject) args[0];
+      return dynamicObject.invoker(inlineCache.name, inlineCache.type());
     }
+  }
+
+  public static Object fallback(InlineCache inlineCache, Object[] args) throws Throwable {
 
     if (inlineCache.isMegaMorphic()) {
       return installVTableDispatch(inlineCache, args);
     }
 
-    if (shouldReturnNull(inlineCache, args[0])) {
-      return null;
+    if (args[0] == null) {
+      if (shouldReturnNull(inlineCache, args[0])) {
+        return null;
+      } else {
+        throw new NullPointerException("On method: " + inlineCache.name + " " + inlineCache.type().dropParameterTypes(0, 1));
+      }
     }
 
     Class<?> receiverClass = args[0].getClass();
-    MethodHandle target = findTarget(receiverClass, inlineCache, args);
+    MethodHandle target = lookupTarget(receiverClass, inlineCache, args);
 
     MethodHandle guard = CLASS_GUARD.bindTo(receiverClass);
-    MethodHandle fallback = (inlineCache.state == POLYMORPHIC) ? inlineCache.getTarget() : inlineCache.fallback;
+    MethodHandle fallback = inlineCache.getTarget();
     MethodHandle root = guardWithTest(guard, target, fallback);
     if (inlineCache.nullSafeGuarded) {
       root = makeNullSafeGuarded(root);
     }
     inlineCache.setTarget(root);
-    inlineCache.state = POLYMORPHIC;
     inlineCache.depth = inlineCache.depth + 1;
     return target.invokeWithArguments(args);
   }
@@ -199,32 +177,21 @@ public class MethodInvocationSupport {
 
   private static Object installVTableDispatch(InlineCache inlineCache, Object[] args) throws Throwable {
     if (inlineCache.vtable == null) {
-      inlineCache.vtable = new HashMap<>();
+      inlineCache.vtable = new WeakHashMap<>();
     }
     MethodHandle lookup = VTABLE_LOOKUP
         .bindTo(inlineCache)
         .asCollector(Object[].class, args.length);
     MethodHandle exactInvoker = exactInvoker(inlineCache.type());
     MethodHandle vtableTarget = foldArguments(exactInvoker, lookup);
-    MethodHandle gwt = guardWithTest(NOT_DYNAMIC_OBJECT, vtableTarget, inlineCache.fallback);
     if (inlineCache.nullSafeGuarded) {
-      gwt = makeNullSafeGuarded(gwt);
+      vtableTarget = makeNullSafeGuarded(vtableTarget);
     }
-    inlineCache.setTarget(gwt);
+    inlineCache.setTarget(vtableTarget);
     if (shouldReturnNull(inlineCache, args[0])) {
       return null;
     }
     return vtableTarget.invokeWithArguments(args);
-  }
-
-  private static Object installDynamicObjectDispatch(InlineCache inlineCache, Object[] args) throws Throwable {
-    DynamicObject dynamicObject = (DynamicObject) args[0];
-    MethodHandle target = dynamicObject.plug(inlineCache.name, inlineCache.type(), inlineCache.fallback);
-    MethodHandle guard = INSTANCE_GUARD.bindTo(dynamicObject);
-    MethodHandle root = guardWithTest(guard, target, inlineCache.fallback);
-    inlineCache.state = DYNAMIC_OBJECT;
-    inlineCache.resetWith(root);
-    return target.invokeWithArguments(args);
   }
 
   private static boolean isCallOnDynamicObject(InlineCache inlineCache, Object arg) {
@@ -240,15 +207,20 @@ public class MethodInvocationSupport {
       return findArraySpecialMethod(receiverClass, inlineCache, args, type);
     }
 
-    Object searchResult = findMethodOrField(receiverClass, inlineCache.name, type.parameterArray(), args);
+    Object searchResult = findMethodOrField(receiverClass, inlineCache, type.parameterArray(), args);
     if (searchResult != null) {
       try {
         if (searchResult.getClass() == Method.class) {
           Method method = (Method) searchResult;
-          if (makeAccessible) {
+          if (makeAccessible || isValidPrivateStructAccess(args[0], method, inlineCache)) {
             method.setAccessible(true);
           }
-          target = inlineCache.callerLookup.unreflect(method).asType(type);
+          if ((method.isVarArgs() && isLastArgumentAnArray(type.parameterCount(), args))) {
+            target = inlineCache.callerLookup.unreflect(method).asFixedArity().asType(type);
+          } else {
+            target = inlineCache.callerLookup.unreflect(method).asType(type);
+          }
+          target = FunctionCallSupport.insertSAMFilter(target, method.getParameterTypes(), 1);
         } else {
           Field field = (Field) searchResult;
           if (makeAccessible) {
@@ -270,7 +242,7 @@ public class MethodInvocationSupport {
       }
     }
 
-    target = findInAugmentations(receiverClass, inlineCache);
+    target = findInAugmentations(receiverClass, inlineCache, args);
     if (target != null) {
       return target;
     }
@@ -326,7 +298,8 @@ public class MethodInvocationSupport {
         }
         try {
           return inlineCache.callerLookup.findStatic(
-              Arrays.class, "asList", methodType(List.class, Object[].class)).asType(type);
+              Arrays.class, "asList", methodType(List.class, Object[].class))
+              .asFixedArity().asType(type);
         } catch (NoSuchMethodException | IllegalAccessException e) {
           throw new Error(e);
         }
@@ -340,16 +313,42 @@ public class MethodInvocationSupport {
         } catch (NoSuchMethodException | IllegalAccessException e) {
           throw new Error(e);
         }
+      case "getClass":
+        if (args.length != 1) {
+          throw new UnsupportedOperationException("getClass on arrays takes no parameters");
+        }
+        return MethodHandles.dropArguments(MethodHandles.constant(Class.class, receiverClass), 0, receiverClass).asType(type);
       default:
         throw new UnsupportedOperationException(inlineCache.name + " is not supported on arrays");
     }
   }
 
-  private static Object findMethodOrField(Class<?> receiverClass, String name, Class<?>[] argumentTypes, Object[] args) {
+  private static boolean isValidPrivateStructAccess(Object receiver, Method method, InlineCache inlineCache) {
+    if (!(receiver instanceof GoloStruct)) {
+      return false;
+    }
+    String receiverClassName = receiver.getClass().getName();
+    String callerClassName = inlineCache.callerLookup.lookupClass().getName();
+    return method.getName().equals(inlineCache.name) &&
+        isPrivate(methodModifiers()) &&
+        (receiverClassName.startsWith(callerClassName) ||
+            callerClassName.equals(reverseStructAugmentation(receiverClassName)));
+  }
+
+  private static String reverseStructAugmentation(String receiverClassName) {
+    return receiverClassName.substring(0, receiverClassName.indexOf(".types")) + "$" + receiverClassName.replace('.', '$');
+  }
+
+  private static Object findMethodOrField(Class<?> receiverClass, InlineCache inlineCache, Class<?>[] argumentTypes, Object[] args) {
 
     List<Method> candidates = new LinkedList<>();
-    for (Method method : receiverClass.getMethods()) {
-      if (isCandidateMethod(name, method)) {
+    HashSet<Method> methods = new HashSet<>();
+    Collections.addAll(methods, receiverClass.getMethods());
+    Collections.addAll(methods, receiverClass.getDeclaredMethods());
+    for (Method method : methods) {
+      if (isCandidateMethod(inlineCache.name, method)) {
+        candidates.add(method);
+      } else if (isValidPrivateStructAccess(args[0], method, inlineCache)) {
         candidates.add(method);
       }
     }
@@ -372,12 +371,12 @@ public class MethodInvocationSupport {
 
     if (argumentTypes.length <= 2) {
       for (Field field : receiverClass.getDeclaredFields()) {
-        if (isMatchingField(name, field)) {
+        if (isMatchingField(inlineCache.name, field)) {
           return field;
         }
       }
       for (Field field : receiverClass.getFields()) {
-        if (isMatchingField(name, field)) {
+        if (isMatchingField(inlineCache.name, field)) {
           return field;
         }
       }
@@ -386,7 +385,7 @@ public class MethodInvocationSupport {
     return null;
   }
 
-  private static MethodHandle findInAugmentations(Class<?> receiverClass, InlineCache inlineCache) {
+  private static MethodHandle findInAugmentations(Class<?> receiverClass, InlineCache inlineCache, Object[] args) {
     Class<?> callerClass = inlineCache.callerLookup.lookupClass();
     String name = inlineCache.name;
     MethodType type = inlineCache.type();
@@ -401,7 +400,12 @@ public class MethodInvocationSupport {
           Class<?> augmentClass = classLoader.loadClass(augmentClassName(callerClass, augmentedClass));
           for (Method method : augmentClass.getMethods()) {
             if (isCandidateMethod(name, method) && augmentMethodMatches(arity, method)) {
-              return lookup.unreflect(method).asType(type);
+              MethodHandle target = lookup.unreflect(method);
+              if (target.isVarargsCollector() && isLastArgumentAnArray(arity, args)) {
+                return target.asFixedArity().asType(type);
+              } else {
+                return target.asType(type);
+              }
             }
           }
         }
@@ -420,7 +424,12 @@ public class MethodInvocationSupport {
               Class<?> augmentClass = classLoader.loadClass(augmentClassName(importClass, augmentedClass));
               for (Method method : augmentClass.getMethods()) {
                 if (isCandidateMethod(name, method) && augmentMethodMatches(arity, method)) {
-                  return lookup.unreflect(method).asType(type);
+                  MethodHandle target = lookup.unreflect(method);
+                  if (target.isVarargsCollector() && isLastArgumentAnArray(arity, args)) {
+                    return target.asFixedArity().asType(type);
+                  } else {
+                    return target.asType(type);
+                  }
                 }
               }
             }

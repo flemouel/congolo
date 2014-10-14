@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2013 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
+ * Copyright 2012-2014 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -78,19 +78,37 @@ class LocalReferenceAssignmentAndVerificationVisitor implements GoloIrVisitor {
     for (String parameterName : function.getParameterNames()) {
       LocalReference reference = table.get(parameterName);
       if (reference == null) {
-        throw new IllegalStateException("[please report this bug] " + parameterName + " is not declared in the references of function " + function.getName());
+        if (!function.isSynthetic()) {
+          throw new IllegalStateException("[please report this bug] " + parameterName + " is not declared in the references of function " + function.getName());
+        }
+      } else {
+        reference.setIndex(nextAssignmentIndex());
       }
-      reference.setIndex(nextAssignmentIndex());
     }
     function.getBlock().accept(this);
+    String selfName = function.getSyntheticSelfName();
+    if (function.isSynthetic() && selfName != null) {
+      LocalReference self = function.getBlock().getReferenceTable().get(selfName);
+      ClosureReference closureReference = new ClosureReference(function);
+      for (String syntheticRef : function.getSyntheticParameterNames()) {
+        closureReference.addCapturedReferenceName(syntheticRef);
+      }
+      AssignmentStatement assign = new AssignmentStatement(self, closureReference);
+      function.getBlock().prependStatement(assign);
+    }
     functionStack.pop();
+  }
+
+  @Override
+  public void visitDecorator(Decorator decorator) {
+    decorator.getExpressionStatement().accept(this);
   }
 
   @Override
   public void visitBlock(Block block) {
     ReferenceTable table = block.getReferenceTable();
     for (LocalReference reference : table.ownedReferences()) {
-      if (reference.getIndex() < 0) {
+      if (reference.getIndex() < 0 && !isModuleState(reference)) {
         reference.setIndex(nextAssignmentIndex());
       }
     }
@@ -112,6 +130,11 @@ class LocalReferenceAssignmentAndVerificationVisitor implements GoloIrVisitor {
     assignmentStack.pop();
   }
 
+  private boolean isModuleState(LocalReference reference) {
+    return (reference.getKind().equals(LocalReference.Kind.MODULE_VARIABLE)) ||
+        (reference.getKind().equals(LocalReference.Kind.MODULE_CONSTANT));
+  }
+
   @Override
   public void visitConstantStatement(ConstantStatement constantStatement) {
 
@@ -125,28 +148,60 @@ class LocalReferenceAssignmentAndVerificationVisitor implements GoloIrVisitor {
   @Override
   public void visitFunctionInvocation(FunctionInvocation functionInvocation) {
     if (tableStack.peek().hasReferenceFor(functionInvocation.getName())) {
-      functionInvocation.setOnReference(true);
+      if (tableStack.peek().get(functionInvocation.getName()).isModuleState()) {
+        functionInvocation.setOnModuleState(true);
+      } else {
+        functionInvocation.setOnReference(true);
+      }
     }
     for (ExpressionStatement argument : functionInvocation.getArguments()) {
       argument.accept(this);
+    }
+    for (FunctionInvocation invocation : functionInvocation.getAnonymousFunctionInvocations()) {
+      invocation.accept(this);
     }
   }
 
   @Override
   public void visitAssignmentStatement(AssignmentStatement assignmentStatement) {
     LocalReference reference = assignmentStatement.getLocalReference();
-    if (reference.getKind().equals(LocalReference.Kind.CONSTANT)) {
-      Set<LocalReference> assignedReferences = assignmentStack.peek();
-      if (assignedReferences.contains(reference)) {
-        getExceptionBuilder().report(ASSIGN_CONSTANT, assignmentStatement.getASTNode(),
-            "Assigning `" + reference.getName() +
-                "` at " + assignmentStatement.getPositionInSourceCode() +
-                " but it is a constant reference");
-      } else {
-        assignedReferences.add(reference);
+    Set<LocalReference> assignedReferences = assignmentStack.peek();
+    if (assigningConstant(reference, assignedReferences)) {
+      getExceptionBuilder().report(ASSIGN_CONSTANT, assignmentStatement.getASTNode(),
+          "Assigning `" + reference.getName() +
+              "` at " + assignmentStatement.getPositionInSourceCode() +
+              " but it is a constant reference"
+      );
+    } else if (redeclaringReferenceInBlock(assignmentStatement, reference, assignedReferences)) {
+      getExceptionBuilder().report(REFERENCE_ALREADY_DECLARED_IN_BLOCK, assignmentStatement.getASTNode(),
+          "Declaring a duplicate reference `" + reference.getName() +
+              "` at " + assignmentStatement.getPositionInSourceCode()
+      );
+    }
+    assignedReferences.add(reference);
+    assignmentStatement.getExpressionStatement().accept(this);
+  }
+
+  private boolean redeclaringReferenceInBlock(AssignmentStatement assignmentStatement, LocalReference reference, Set<LocalReference> assignedReferences) {
+    return !reference.isSynthetic() && assignmentStatement.isDeclaring() && referenceNameExists(reference, assignedReferences);
+  }
+
+  private boolean assigningConstant(LocalReference reference, Set<LocalReference> assignedReferences) {
+    return (reference.getKind().equals(LocalReference.Kind.MODULE_CONSTANT) && !"<clinit>".equals(functionStack.peek().getName())) ||
+        isConstantReference(reference) && assignedReferences.contains(reference);
+  }
+
+  private boolean isConstantReference(LocalReference reference) {
+    return reference.getKind().equals(LocalReference.Kind.CONSTANT) || reference.getKind().equals(LocalReference.Kind.MODULE_CONSTANT);
+  }
+
+  private boolean referenceNameExists(LocalReference reference, Set<LocalReference> referencesInBlock) {
+    for (LocalReference ref : referencesInBlock) {
+      if ((ref != null) && ref.getName().equals(reference.getName())) {
+        return true;
       }
     }
-    assignmentStatement.getExpressionStatement().accept(this);
+    return false;
   }
 
   @Override
@@ -170,7 +225,7 @@ class LocalReferenceAssignmentAndVerificationVisitor implements GoloIrVisitor {
   }
 
   @Override
-  public void acceptBinaryOperation(BinaryOperation binaryOperation) {
+  public void visitBinaryOperation(BinaryOperation binaryOperation) {
     binaryOperation.getLeftExpression().accept(this);
     binaryOperation.getRightExpression().accept(this);
   }
@@ -195,9 +250,12 @@ class LocalReferenceAssignmentAndVerificationVisitor implements GoloIrVisitor {
   }
 
   @Override
-  public void acceptMethodInvocation(MethodInvocation methodInvocation) {
+  public void visitMethodInvocation(MethodInvocation methodInvocation) {
     for (ExpressionStatement argument : methodInvocation.getArguments()) {
       argument.accept(this);
+    }
+    for (FunctionInvocation invocation : methodInvocation.getAnonymousFunctionInvocations()) {
+      invocation.accept(this);
     }
   }
 
@@ -226,13 +284,20 @@ class LocalReferenceAssignmentAndVerificationVisitor implements GoloIrVisitor {
   }
 
   @Override
-  public void acceptLoopBreakFlowStatement(LoopBreakFlowStatement loopBreakFlowStatement) {
+  public void visitLoopBreakFlowStatement(LoopBreakFlowStatement loopBreakFlowStatement) {
     if (loopStack.isEmpty()) {
       getExceptionBuilder().report(BREAK_OR_CONTINUE_OUTSIDE_LOOP,
           loopBreakFlowStatement.getASTNode(),
           "continue or break statement outside a loop at " + loopBreakFlowStatement.getPositionInSourceCode());
     } else {
       loopBreakFlowStatement.setEnclosingLoop(loopStack.peek());
+    }
+  }
+
+  @Override
+  public void visitCollectionLiteral(CollectionLiteral collectionLiteral) {
+    for (ExpressionStatement statement : collectionLiteral.getExpressions()) {
+      statement.accept(this);
     }
   }
 }

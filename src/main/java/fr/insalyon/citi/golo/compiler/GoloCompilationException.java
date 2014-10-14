@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2013 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
+ * Copyright 2012-2014 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,12 +43,14 @@ public class GoloCompilationException extends RuntimeException {
       AUGMENT_FUNCTION_NO_ARGS,
       UNDECLARED_REFERENCE,
       ASSIGN_CONSTANT,
-      BREAK_OR_CONTINUE_OUTSIDE_LOOP
+      BREAK_OR_CONTINUE_OUTSIDE_LOOP,
+      REFERENCE_ALREADY_DECLARED_IN_BLOCK
     }
 
     private final Type type;
     private final GoloASTNode source;
-    private final Token token;
+    private final Token firstToken;
+    private final Token lastToken;
 
     private final String description;
 
@@ -62,7 +64,8 @@ public class GoloCompilationException extends RuntimeException {
     public Problem(Type type, GoloASTNode source, String description) {
       this.type = type;
       this.source = source;
-      this.token = null;
+      this.firstToken = source.jjtGetFirstToken();
+      this.lastToken = source.jjtGetLastToken();
       this.description = description;
     }
 
@@ -77,14 +80,16 @@ public class GoloCompilationException extends RuntimeException {
     public Problem(Type type, GoloASTNode source, Token token, String description) {
       this.type = type;
       this.source = source;
-      this.token = token;
+      this.firstToken = token;
+      this.lastToken = token;
       this.description = description;
     }
 
     public Problem(ParseException pe, GoloASTNode source) {
       this.type = Type.PARSING;
       this.source = source;
-      this.token = pe.currentToken;
+      this.firstToken = pe.currentToken;
+      this.lastToken = pe.currentToken;
       this.description = pe.getMessage();
     }
 
@@ -103,10 +108,17 @@ public class GoloCompilationException extends RuntimeException {
     }
 
     /**
-     * @return the problem detailed token in source. May be null.
+     * @return the problem detailed start token in source.
      */
-    public Token getToken() {
-      return token;
+    public Token getFirstToken() {
+      return firstToken;
+    }
+
+    /**
+     * @return the problem detailed end token in source.
+     */
+    public Token getLastToken() {
+      return lastToken;
     }
 
     /**
@@ -140,6 +152,7 @@ public class GoloCompilationException extends RuntimeException {
      */
     public Builder(String goloSourceFilename) {
       exception = new GoloCompilationException("In Golo module: " + goloSourceFilename);
+      exception.setSourceCode(goloSourceFilename);
     }
 
     /**

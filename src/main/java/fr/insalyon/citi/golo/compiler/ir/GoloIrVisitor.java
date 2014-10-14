@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2013 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
+ * Copyright 2012-2014 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,8 @@ public interface GoloIrVisitor {
 
   void visitFunction(GoloFunction function);
 
+  void visitDecorator(Decorator decorator);
+
   void visitBlock(Block block);
 
   void visitConstantStatement(ConstantStatement constantStatement);
@@ -36,13 +38,13 @@ public interface GoloIrVisitor {
 
   void visitConditionalBranching(ConditionalBranching conditionalBranching);
 
-  void acceptBinaryOperation(BinaryOperation binaryOperation);
+  void visitBinaryOperation(BinaryOperation binaryOperation);
 
   void visitUnaryOperation(UnaryOperation unaryOperation);
 
   void visitLoopStatement(LoopStatement loopStatement);
 
-  void acceptMethodInvocation(MethodInvocation methodInvocation);
+  void visitMethodInvocation(MethodInvocation methodInvocation);
 
   void visitThrowStatement(ThrowStatement throwStatement);
 
@@ -50,5 +52,7 @@ public interface GoloIrVisitor {
 
   void visitClosureReference(ClosureReference closureReference);
 
-  void acceptLoopBreakFlowStatement(LoopBreakFlowStatement loopBreakFlowStatement);
+  void visitLoopBreakFlowStatement(LoopBreakFlowStatement loopBreakFlowStatement);
+
+  void visitCollectionLiteral(CollectionLiteral collectionLiteral);
 }

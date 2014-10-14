@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2013 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
+ * Copyright 2012-2014 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,13 +19,14 @@ package gololang;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
-import java.lang.invoke.SwitchPoint;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
+import static fr.insalyon.citi.golo.runtime.TypeMatching.isLastArgumentAnArray;
+import static java.lang.System.arraycopy;
 import static java.lang.invoke.MethodHandles.*;
+import static java.lang.invoke.MethodType.genericMethodType;
 import static java.lang.invoke.MethodType.methodType;
 
 /**
@@ -35,10 +36,9 @@ import static java.lang.invoke.MethodType.methodType;
  * The methods <code>plug</code> and <code>propertyMissing</code> are left undocumented. They are being used
  * by the Golo runtime to dispatch method invocations on dynamic objects.
  */
-public class DynamicObject {
+public final class DynamicObject {
 
-  private final Map<String, Set<SwitchPoint>> switchPoints = new HashMap<>();
-  private final Map<String, Object> properties = new HashMap<>();
+  private final HashMap<String, Object> properties = new HashMap<>();
   private boolean frozen = false;
 
   /**
@@ -50,15 +50,8 @@ public class DynamicObject {
    * @throws IllegalStateException if the dynamic object is frozen.
    */
   public DynamicObject define(String name, Object value) {
-    if (frozen) {
-      throw new IllegalStateException("the object is frozen");
-    }
+    frozenMutationCheck();
     properties.put(name, value);
-    if (switchPoints.containsKey(name)) {
-      invalidate(name);
-    } else {
-      switchPoints.put(name, new HashSet<SwitchPoint>());
-    }
     return this;
   }
 
@@ -67,12 +60,6 @@ public class DynamicObject {
    */
   public Set<Map.Entry<String, Object>> properties() {
     return properties.entrySet();
-  }
-
-  private void invalidate(String name) {
-    Set<SwitchPoint> switches = switchPoints.get(name);
-    SwitchPoint.invalidateAll(switches.toArray(new SwitchPoint[switches.size()]));
-    switches.clear();
   }
 
   /**
@@ -90,11 +77,7 @@ public class DynamicObject {
    * @return the same dynamic object.
    */
   public DynamicObject undefine(String name) {
-    if (properties.containsKey(name)) {
-      properties.remove(name);
-      invalidate(name);
-      switchPoints.remove(name);
-    }
+    properties.remove(name);
     return this;
   }
 
@@ -104,7 +87,7 @@ public class DynamicObject {
   public DynamicObject copy() {
     DynamicObject copy = new DynamicObject();
     for (Map.Entry<String, Object> entry : properties.entrySet()) {
-      define(entry.getKey(), entry.getValue());
+      copy.properties.put(entry.getKey(), entry.getValue());
     }
     return copy;
   }
@@ -116,8 +99,9 @@ public class DynamicObject {
    * @return the same dynamic object.
    */
   public DynamicObject mixin(DynamicObject other) {
+    frozenMutationCheck();
     for (Map.Entry<String, Object> entry : other.properties.entrySet()) {
-      define(entry.getKey(), entry.getValue());
+      properties.put(entry.getKey(), entry.getValue());
     }
     return this;
   }
@@ -132,68 +116,186 @@ public class DynamicObject {
     return this;
   }
 
-  private static final MethodHandle PROPERTY_MISSING;
-  private static final MethodHandle DEFINE;
+  /**
+   * Tells whether the dynamic object is frozen or not.
+   *
+   * @return {@code true} if frozen, {@code false} otherwise.
+   */
+  public boolean isFrozen() {
+    return frozen;
+  }
+
+  /**
+   * Dispatch dynamic object "methods". The receiver dynamic object is expected to be the first element of {@code args}.
+   *
+   * @param property the method property in the dynamic object.
+   * @param args     the arguments.
+   * @return the return value.
+   * @throws Throwable in case everything is wrong.
+   */
+  public static Object dispatchCall(String property, Object... args) throws Throwable {
+    DynamicObject obj = (DynamicObject) args[0];
+    Object value = obj.properties.get(property);
+    if (value != null) {
+      if (value instanceof MethodHandle) {
+        MethodHandle handle = (MethodHandle) value;
+        if (handle.isVarargsCollector() && args[args.length - 1] instanceof Object[]) {
+          Object[] trailing = (Object[]) args[args.length - 1];
+          Object[] spreadArgs = new Object[args.length + trailing.length - 1];
+          arraycopy(args, 0, spreadArgs, 0, args.length - 1);
+          arraycopy(trailing, 0, spreadArgs, args.length - 1, trailing.length);
+          return handle.invokeWithArguments(spreadArgs);
+        }
+        return handle.invokeWithArguments(args);
+      } else {
+        throw new UnsupportedOperationException("There is no dynamic object method defined for " + property);
+      }
+    }
+    if (obj.hasFallback()) {
+      MethodHandle handle = (MethodHandle) obj.properties.get("fallback");
+      Object[] fallback_args = new Object[args.length + 1];
+      fallback_args[0] = obj;
+      fallback_args[1] = property;
+      arraycopy(args, 1, fallback_args, 2, args.length - 1);
+      return handle.invokeWithArguments(fallback_args);
+    }
+    throw new UnsupportedOperationException("There is neither a dynamic object method defined for " + property + " nor a 'fallback' method");
+  }
+
+  /**
+   * Dispatches getter-style dynamic object methods, i.e., methods with a receiver and no argument.
+   *
+   * @param property the method property in the dynamic object.
+   * @param object   the receiver object.
+   * @return the return value.
+   * @throws Throwable in case everything is wrong.
+   */
+  public static Object dispatchGetterStyle(String property, DynamicObject object) throws Throwable {
+    Object value = object.get(property);
+    if (value != null || object.properties.containsKey(property)) {
+      if (value instanceof MethodHandle) {
+        MethodHandle handle = (MethodHandle) value;
+        if (handle.type().parameterCount() == 1 || handle.isVarargsCollector()) {
+          return handle.invokeWithArguments(object);
+        }
+      }
+      return value;
+    }
+    if (object.hasFallback()) {
+      MethodHandle handle = (MethodHandle) object.properties.get("fallback");
+      return handle.invokeWithArguments(object, property);
+    }
+    return null;
+  }
+
+  /**
+   * Dispatches setter-style dynamic object methods, i.e., methods with a receiver and exactly 1 argument.
+   *
+   * @param property the method property in the dynamic object.
+   * @param object   the receiver object.
+   * @param arg      the arguments.
+   * @return the return value.
+   * @throws Throwable in case everything is wrong.
+   */
+  public static Object dispatchSetterStyle(String property, DynamicObject object, Object arg) throws Throwable {
+    Object value = object.get(property);
+    if (value != null || object.properties.containsKey(property)) {
+      if (value instanceof MethodHandle) {
+        MethodHandle handle = (MethodHandle) value;
+        if (handle.type().parameterCount() == 2) {
+          if (handle.isVarargsCollector() && arg instanceof Object[]) {
+            return handle.invokeExact((Object) object, (Object[]) arg);
+          }
+          return handle.invokeWithArguments(object, arg);
+        }
+      }
+    }
+    return object.define(property, arg);
+  }
+
+  /**
+   * Gives an invoker method handle for a given property.
+   * <p>
+   * While this method may be useful in itself, it is mostly relevant for the Golo runtime internals so as
+   * to allow calling "methods" on dynamic objects, as in:
+   * <pre>
+   * # obj is some dynamic object...
+   * obj: foo("bar")
+   * println(foo: bar())
+   *
+   * obj: define("plop", |this| -> "Plop!")
+   * println(obj: plop())
+   * </pre>
+   *
+   * @param property the name of a property.
+   * @param type     the expected invoker type with at least one parameter (the dynamic object as a receiver).
+   * @return a method handle.
+   */
+  public MethodHandle invoker(String property, MethodType type) {
+    switch (type.parameterCount()) {
+      case 0:
+        throw new IllegalArgumentException("A dynamic object invoker type needs at least 1 argument (the receiver)");
+      case 1:
+        return DISPATCH_GET.bindTo(property).asType(genericMethodType(1));
+      case 2:
+        return DISPATCH_SET.bindTo(property).asType(genericMethodType(2));
+      default:
+        return DISPATCH_CALL.bindTo(property).asCollector(Object[].class, type.parameterCount());
+    }
+  }
+
+  /**
+   * Verify if a method is defined for the dynamic object.
+   *
+   * @param method the method name.
+   * @return {@code true} if method is defined, {@code false} otherwise.
+   */
+  public boolean hasMethod(String method) {
+    Object obj = properties.get(method);
+    if (obj != null) {
+      return (obj instanceof MethodHandle);
+    }
+    return false;
+  }
+
+  /**
+   * Let the user define a fallback behavior.
+   *
+   * @param value the fallback value
+   * @return the current object
+   */
+  public DynamicObject fallback(Object value) {
+    return define("fallback", value);
+  }
+
+  /**
+   * Verify a fallback property exists.
+   *
+   * @return {@code true} if a fallback behavior is defined, {@code false} otherwise.
+   */
+  private boolean hasFallback() {
+    return properties.containsKey("fallback");
+  }
+
+  public static final MethodHandle DISPATCH_CALL;
+  public static final MethodHandle DISPATCH_GET;
+  public static final MethodHandle DISPATCH_SET;
 
   static {
     MethodHandles.Lookup lookup = MethodHandles.lookup();
     try {
-      PROPERTY_MISSING = lookup.findStatic(DynamicObject.class, "propertyMissing",
-          methodType(Object.class, String.class, Object[].class));
-      DEFINE = lookup.findVirtual(DynamicObject.class, "define",
-          methodType(DynamicObject.class, String.class, Object.class));
+      DISPATCH_CALL = lookup.findStatic(DynamicObject.class, "dispatchCall", methodType(Object.class, String.class, Object[].class));
+      DISPATCH_GET = lookup.findStatic(DynamicObject.class, "dispatchGetterStyle", methodType(Object.class, String.class, DynamicObject.class));
+      DISPATCH_SET = lookup.findStatic(DynamicObject.class, "dispatchSetterStyle", methodType(Object.class, String.class, DynamicObject.class, Object.class));
     } catch (NoSuchMethodException | IllegalAccessException e) {
+      e.printStackTrace();
       throw new Error("Could not bootstrap the required method handles");
     }
   }
 
-  public static Object propertyMissing(String name, Object[] args) throws NoSuchMethodException {
-    throw new NoSuchMethodException("Missing DynamicObject definition for " + name);
-  }
-
-  public MethodHandle plug(String name, MethodType type, MethodHandle fallback) {
-    Object value = properties.get(name);
-    MethodHandle target;
-    int parameterCount = type.parameterCount();
-    if (value != null) {
-      if (value instanceof MethodHandle) {
-        target = (MethodHandle) value;
-        if (missesReceiverType(target)) {
-          throw new IllegalArgumentException(name + " must have a first a non-array first argument as the dynamic object");
-        }
-        if (wrongMethodSignature(type, target)) {
-          throw new IllegalArgumentException(name + " must have the following signature: " + type + " (found: " + target.type() + ")");
-        }
-      } else {
-        if (parameterCount == 1) {
-          target = dropArguments(constant(Object.class, value), 0, DynamicObject.class);
-        } else if (parameterCount == 2) {
-          target = insertArguments(DEFINE, 1, name);
-        } else {
-          throw new IllegalArgumentException(name + " needs to invoked with just 1 argument");
-        }
-      }
-    } else {
-      if (parameterCount == 2) {
-        target = insertArguments(DEFINE, 1, name);
-      } else {
-        target = PROPERTY_MISSING
-            .bindTo(name)
-            .asCollector(Object[].class, parameterCount)
-            .asType(type);
-      }
-      switchPoints.put(name, new HashSet<SwitchPoint>());
+  private void frozenMutationCheck() {
+    if (frozen) {
+      throw new IllegalStateException("the object is frozen");
     }
-    SwitchPoint switchPoint = new SwitchPoint();
-    switchPoints.get(name).add(switchPoint);
-    return switchPoint.guardWithTest(target.asType(type), fallback);
-  }
-
-  private boolean wrongMethodSignature(MethodType type, MethodHandle target) {
-    return target.type().parameterCount() != type.parameterCount();
-  }
-
-  private boolean missesReceiverType(MethodHandle target) {
-    return target.type().parameterCount() < 1 || target.type().parameterType(0).isArray();
   }
 }

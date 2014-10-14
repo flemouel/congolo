@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2013 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
+ * Copyright 2012-2014 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ public abstract class AbstractInvocation extends ExpressionStatement {
 
   private final String name;
   private final List<ExpressionStatement> arguments = new LinkedList<>();
+  private final List<FunctionInvocation> anonymousFunctionInvocations = new LinkedList<>();
 
   public AbstractInvocation(String name) {
     super();
@@ -44,5 +45,13 @@ public abstract class AbstractInvocation extends ExpressionStatement {
 
   public int getArity() {
     return arguments.size();
+  }
+
+  public void addAnonymousFunctionInvocation(FunctionInvocation invocation) {
+    anonymousFunctionInvocations.add(invocation);
+  }
+
+  public List<FunctionInvocation> getAnonymousFunctionInvocations() {
+    return Collections.unmodifiableList(anonymousFunctionInvocations);
   }
 }

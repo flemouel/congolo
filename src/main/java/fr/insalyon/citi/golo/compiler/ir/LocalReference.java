@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2013 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
+ * Copyright 2012-2014 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,17 +19,25 @@ package fr.insalyon.citi.golo.compiler.ir;
 public final class LocalReference {
 
   public static enum Kind {
-    CONSTANT, VARIABLE
+    CONSTANT, VARIABLE, MODULE_CONSTANT, MODULE_VARIABLE
   }
 
   private final Kind kind;
   private final String name;
+  private final boolean synthetic;
 
   private int index = -1;
 
   public LocalReference(Kind kind, String name) {
     this.kind = kind;
     this.name = name;
+    this.synthetic = false;
+  }
+
+  public LocalReference(Kind kind, String name, boolean synthetic) {
+    this.kind = kind;
+    this.name = name;
+    this.synthetic = synthetic;
   }
 
   public Kind getKind() {
@@ -38,6 +46,14 @@ public final class LocalReference {
 
   public String getName() {
     return name;
+  }
+
+  public boolean isSynthetic() {
+    return synthetic;
+  }
+
+  public boolean isModuleState() {
+    return kind == Kind.MODULE_CONSTANT || kind == Kind.MODULE_VARIABLE;
   }
 
   public int getIndex() {

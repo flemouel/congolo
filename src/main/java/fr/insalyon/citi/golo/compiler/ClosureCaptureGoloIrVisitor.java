@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2013 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
+ * Copyright 2012-2014 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -137,6 +137,11 @@ class ClosureCaptureGoloIrVisitor implements GoloIrVisitor {
     }
   }
 
+  @Override
+  public void visitDecorator(Decorator decorator) {
+    decorator.getExpressionStatement().accept(this);
+  }
+
   private void dropUnused(Set<String> refs) {
     Context context = context();
     for (String ref : refs) {
@@ -149,7 +154,7 @@ class ClosureCaptureGoloIrVisitor implements GoloIrVisitor {
   private void makeArguments(GoloFunction function, Set<String> refs) {
     Set<String> existing = new HashSet<>(function.getParameterNames());
     for (String ref : refs) {
-      if (!existing.contains(ref)) {
+      if (!existing.contains(ref) && !ref.equals(function.getSyntheticSelfName())) {
         function.addSyntheticParameter(ref);
       }
     }
@@ -182,11 +187,18 @@ class ClosureCaptureGoloIrVisitor implements GoloIrVisitor {
       String name = functionInvocation.getName();
       if (context.allReferences.contains(name)) {
         accessed(name);
-        functionInvocation.setOnReference(true);
+        if (context.referenceTableStack.peek().get(name).isModuleState()) {
+          functionInvocation.setOnModuleState(true);
+        } else {
+          functionInvocation.setOnReference(true);
+        }
       }
     }
     for (ExpressionStatement statement : functionInvocation.getArguments()) {
       statement.accept(this);
+    }
+    for (FunctionInvocation invocation : functionInvocation.getAnonymousFunctionInvocations()) {
+      invocation.accept(this);
     }
   }
 
@@ -201,6 +213,14 @@ class ClosureCaptureGoloIrVisitor implements GoloIrVisitor {
       locallyDeclared(name);
     }
     assignmentStatement.getExpressionStatement().accept(this);
+    if (assignmentStatement.getExpressionStatement() instanceof ClosureReference) {
+      ClosureReference closure = (ClosureReference) assignmentStatement.getExpressionStatement();
+      GoloFunction target = closure.getTarget();
+      if (target.getSyntheticParameterNames().contains(name)) {
+        target.removeSyntheticParameter(name);
+        target.setSyntheticSelfName(name);
+      }
+    }
   }
 
   @Override
@@ -220,7 +240,7 @@ class ClosureCaptureGoloIrVisitor implements GoloIrVisitor {
   }
 
   @Override
-  public void acceptBinaryOperation(BinaryOperation binaryOperation) {
+  public void visitBinaryOperation(BinaryOperation binaryOperation) {
     binaryOperation.getLeftExpression().accept(this);
     binaryOperation.getRightExpression().accept(this);
   }
@@ -243,9 +263,12 @@ class ClosureCaptureGoloIrVisitor implements GoloIrVisitor {
   }
 
   @Override
-  public void acceptMethodInvocation(MethodInvocation methodInvocation) {
+  public void visitMethodInvocation(MethodInvocation methodInvocation) {
     for (ExpressionStatement statement : methodInvocation.getArguments()) {
       statement.accept(this);
+    }
+    for (FunctionInvocation invocation : methodInvocation.getAnonymousFunctionInvocations()) {
+      invocation.accept(this);
     }
   }
 
@@ -285,7 +308,14 @@ class ClosureCaptureGoloIrVisitor implements GoloIrVisitor {
   }
 
   @Override
-  public void acceptLoopBreakFlowStatement(LoopBreakFlowStatement loopBreakFlowStatement) {
+  public void visitLoopBreakFlowStatement(LoopBreakFlowStatement loopBreakFlowStatement) {
 
+  }
+
+  @Override
+  public void visitCollectionLiteral(CollectionLiteral collectionLiteral) {
+    for (ExpressionStatement statement : collectionLiteral.getExpressions()) {
+      statement.accept(this);
+    }
   }
 }

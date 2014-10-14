@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2013 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
+ * Copyright 2012-2014 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -106,6 +106,7 @@ public class PredefinedTest {
   }
 
   @Test
+  @SuppressWarnings("unchecked")
   public void test_asInterfaceInstance() throws Throwable {
     MethodHandles.Lookup lookup = MethodHandles.lookup();
     MethodHandle handle = lookup.findStatic(MyCallable.class, "hello", genericMethodType(0));
@@ -157,5 +158,37 @@ public class PredefinedTest {
     Predefined.textToFile(message, tempFile);
     String text = (String) Predefined.fileToText(tempFile, "UTF-8");
     assertThat(text, is(message));
+  }
+
+  @Test
+  public void test_fileExists() throws Throwable {
+    File tempFile = File.createTempFile("this_exists", "test");
+    assertThat(Predefined.fileExists(tempFile), is(true));
+  }
+
+  @Test
+  public void test_isArray() {
+    assertThat(Predefined.isArray(null), is(false));
+    assertThat(Predefined.isArray(Object.class), is(false));
+    assertThat(Predefined.isArray(new Object[]{}), is(true));
+  }
+
+  @Test
+  public void test_arrayOfType() throws ClassNotFoundException {
+    assertThat((Class) Predefined.arrayTypeOf(Object.class), sameInstance((Class) Object[].class));
+    assertThat((Class) Predefined.objectArrayType(), sameInstance((Class) Object[].class));
+  }
+
+  @Test
+  public void check_value_conversions() {
+    assertThat(Predefined.intValue(1), is((Object) 1));
+    assertThat(Predefined.intValue(1L), is((Object) 1));
+    assertThat(Predefined.intValue(1.0d), is((Object) 1));
+    assertThat(Predefined.intValue("1"), is((Object) 1));
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class)
+  public void check_bogus_value_conversion() {
+    Predefined.doubleValue(new Object());
   }
 }

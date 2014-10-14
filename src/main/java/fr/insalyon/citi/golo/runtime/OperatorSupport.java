@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2013 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
+ * Copyright 2012-2014 Institut National des Sciences Appliquées de Lyon (INSA-Lyon)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -687,7 +687,7 @@ public class OperatorSupport {
 
   public static Object plus_fallback(Object a, Object b) {
     if (isNotNullAndString(a) || isNotNullAndString(b)) {
-      return new StringBuilder().append(a).append(b).toString();
+      return String.valueOf(a) + b;
     }
     return reject(a, b, "plus");
   }
